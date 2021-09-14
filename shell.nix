@@ -1,7 +1,17 @@
 { pkgs ? import <nixpkgs> }:
 with pkgs;
 mkShell {
-  buildInputs = [ go_1_16 gopls ] ++ [ feh graphviz mupdf ] ++ [ jsonnet-lint ];
+  buildInputs = [
+    gofumpt
+    go-outline
+    go-tools
+    go_1_16
+    goimports
+    golangci-lint
+    gopkgs
+    gopls
+    rr
+  ] ++ [ feh graphviz mupdf rlwrap ] ++ [ jsonnet-lint ];
   shellHook = ''
     # ...
   '';
