@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	command   string
-	inputFile string
+	command string
 )
 
 // help writes help text.
@@ -79,7 +78,11 @@ func (r *repl) read() string {
 	input := r.in.Text()
 
 	if err := r.in.Err(); err != nil {
-		io.WriteString(r.err, fmt.Sprintf("Invalid input: %s", err))
+		_, err = io.WriteString(r.err, fmt.Sprintf("Invalid input: %s", err))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	return input
 }
