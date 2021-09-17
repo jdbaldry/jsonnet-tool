@@ -167,6 +167,27 @@ func (vm *VM) EvaluateMulti(node ast.Node) (output map[string]string, err error)
 	return evaluateMulti(node, vm.ext, vm.tla, vm.nativeFuncs, vm.MaxStack, vm.importCache, vm.StringOutput)
 }
 
+// Expand evaluates Jsonnet but manifests an expanded representation instead of JSON.
+// The thunks of local variables are evaluated lazily but eventually, so that even unused
+// local variables are expanded. The same strategy is employed for object field keys and values.
+// Each thunk should reference the original Jsonnet so that a user can move between the
+// expanded and original representations.
+// The written expanded form should follow the written original representation.
+func (vm *VM) Expand(node ast.Node) (val string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("(CRASH) %v\n%s", r, debug.Stack())
+		}
+	}()
+
+	i, err := buildInterpreter(vm.ext, vm.nativeFuncs, vm.MaxStack, vm.importCache)
+	if err != nil {
+		return "", err
+	}
+
+	return expand(i, node, vm.tla)
+}
+
 func (vm *VM) evaluateSnippet(diagnosticFileName ast.DiagnosticFileName, filename string, snippet string, kind evalKind) (output interface{}, err error) {
 	defer func() {
 		if r := recover(); r != nil {

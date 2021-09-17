@@ -284,6 +284,324 @@ func (i *interpreter) newCall(env environment, trimmable bool) error {
 	return nil
 }
 
+func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (value, error) {
+	trace := traceElement{
+		loc:     a.Loc(),
+		context: a.Context(),
+	}
+	oldTrace := i.stack.currentTrace
+	i.stack.clearCurrentTrace()
+	i.stack.setCurrentTrace(trace)
+	defer func() { i.stack.clearCurrentTrace(); i.stack.setCurrentTrace(oldTrace) }()
+
+	switch node := a.(type) {
+	case *ast.Array:
+		sb := i.stack.getSelfBinding()
+		var elements []*cachedThunk
+		for _, el := range node.Elements {
+			env := makeEnvironment(i.stack.capture(el.Expr.FreeVariables()), sb)
+			elThunk := cachedThunk{env: &env, body: el.Expr}
+			elements = append(elements, &elThunk)
+		}
+		return makeValueArray(elements), nil
+
+	case *ast.Binary:
+		if node.Op == ast.BopAnd {
+			// Special case for shortcut semantics.
+			xv, err := i.expand(node.Left, nonTailCall)
+			if err != nil {
+				return nil, err
+			}
+			x, err := i.getBoolean(xv)
+			if err != nil {
+				return nil, err
+			}
+			if !x.value {
+				return x, nil
+			}
+			yv, err := i.expand(node.Right, tc)
+			if err != nil {
+				return nil, err
+			}
+			return i.getBoolean(yv)
+		} else if node.Op == ast.BopOr {
+			// Special case for shortcut semantics.
+			xv, err := i.expand(node.Left, nonTailCall)
+			if err != nil {
+				return nil, err
+			}
+			x, err := i.getBoolean(xv)
+			if err != nil {
+				return nil, err
+			}
+			if x.value {
+				return x, nil
+			}
+			yv, err := i.expand(node.Right, tc)
+			if err != nil {
+				return nil, err
+			}
+			return i.getBoolean(yv)
+
+		} else {
+			left, err := i.expand(node.Left, nonTailCall)
+			if err != nil {
+				return nil, err
+			}
+			right, err := i.expand(node.Right, tc)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(dcunnin): The double dereference here is probably not necessary.
+			builtin := bopBuiltins[node.Op]
+			return builtin.function(i, left, right)
+		}
+
+	case *ast.Unary:
+		value, err := i.expand(node.Expr, tc)
+		if err != nil {
+			return nil, err
+		}
+
+		builtin := uopBuiltins[node.Op]
+
+		result, err := builtin.function(i, value)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+
+	case *ast.Conditional:
+		cond, err := i.expand(node.Cond, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		condBool, err := i.getBoolean(cond)
+		if err != nil {
+			return nil, err
+		}
+		if condBool.value {
+			return i.expand(node.BranchTrue, tc)
+		}
+		return i.expand(node.BranchFalse, tc)
+
+	case *ast.DesugaredObject:
+		// Evaluate all the field names.  Check for null, dups, etc.
+		fields := make(simpleObjectFieldMap)
+		for _, field := range node.Fields {
+			fieldNameValue, err := i.expand(field.Name, nonTailCall)
+			if err != nil {
+				return nil, err
+			}
+			var fieldName string
+			switch fieldNameValue := fieldNameValue.(type) {
+			case valueString:
+				fieldName = fieldNameValue.getGoString()
+			case *valueNull:
+				// Omitted field.
+				continue
+			default:
+				return nil, i.Error(fmt.Sprintf("Field name must be string, got %v", fieldNameValue.getType().name))
+			}
+
+			if _, ok := fields[fieldName]; ok {
+				return nil, i.Error(duplicateFieldNameErrMsg(fieldName))
+			}
+			var f unboundField = &codeUnboundField{field.Body}
+			if field.PlusSuper {
+				f = &plusSuperUnboundField{f}
+			}
+			fields[fieldName] = simpleObjectField{field.Hide, f}
+		}
+		var asserts []unboundField
+		for _, assert := range node.Asserts {
+			asserts = append(asserts, &codeUnboundField{assert})
+		}
+		var locals []objectLocal
+		for _, local := range node.Locals {
+			locals = append(locals, objectLocal{name: local.Variable, node: local.Body})
+		}
+		upValues := i.stack.capture(node.FreeVariables())
+		return makeValueSimpleObject(upValues, fields, asserts, locals), nil
+
+	case *ast.Error:
+		msgVal, err := i.expand(node.Expr, nonTailCall)
+		if err != nil {
+			// error when evaluating error message
+			return nil, err
+		}
+		if msgVal.getType() != stringType {
+			msgVal, err = builtinToString(i, msgVal)
+			if err != nil {
+				return nil, err
+			}
+		}
+		msg, err := i.getString(msgVal)
+		if err != nil {
+			return nil, err
+		}
+		// TODO(jdb): should probably be a different value type.
+		return makeValueString(i.Error(msg.getGoString()).Error()), nil
+
+	case *ast.Index:
+		targetValue, err := i.expand(node.Target, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		index, err := i.expand(node.Index, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		switch target := targetValue.(type) {
+		case *valueObject:
+			indexString, err := i.getString(index)
+			if err != nil {
+				return nil, err
+			}
+			return target.index(i, indexString.getGoString())
+		case *valueArray:
+			indexInt, err := i.getNumber(index)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(https://github.com/google/jsonnet/issues/377): non-integer indexes should be an error
+			return target.index(i, int(indexInt.value))
+
+		case valueString:
+			indexInt, err := i.getNumber(index)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(https://github.com/google/jsonnet/issues/377): non-integer indexes should be an error
+			return target.index(i, int(indexInt.value))
+		}
+
+		return nil, i.Error(fmt.Sprintf("Value non indexable: %v", reflect.TypeOf(targetValue)))
+
+	case *ast.Import:
+		codePath := node.Loc().FileName
+		return i.importCache.importCode(codePath, node.File.Value, i)
+
+	case *ast.ImportStr:
+		codePath := node.Loc().FileName
+		return i.importCache.importString(codePath, node.File.Value, i)
+
+	case *ast.LiteralBoolean:
+		return makeValueBoolean(node.Value), nil
+
+	case *ast.LiteralNull:
+		return makeValueNull(), nil
+
+	case *ast.LiteralNumber:
+		// Since the lexer ensures that OriginalString is of
+		// the right form, this will only fail if the number is
+		// too large to fit in a double.
+		num, err := strconv.ParseFloat(node.OriginalString, 64)
+		if err != nil {
+			return nil, i.Error("overflow")
+		}
+		return makeValueNumber(num), nil
+
+	case *ast.LiteralString:
+		return makeValueString(node.Value), nil
+
+	case *ast.Local:
+		vars := make(bindingFrame)
+		bindEnv := i.stack.getCurrentEnv(a)
+		for _, bind := range node.Binds {
+			th := cachedThunk{env: &bindEnv, body: bind.Body}
+
+			// recursive locals
+			vars[bind.Variable] = &th
+			bindEnv.upValues[bind.Variable] = &th
+		}
+		i.stack.newLocal(vars)
+		sz := len(i.stack.stack)
+		// Add new stack frame, with new thunk for this variable
+		// execute body WRT stack frame.
+		v, err := i.expand(node.Body, tc)
+		i.stack.popIfExists(sz)
+
+		return v, err
+
+	case *ast.Self:
+		sb := i.stack.getSelfBinding()
+		return sb.self, nil
+
+	case *ast.Var:
+		foo := i.stack.lookUpVarOrPanic(node.Id)
+		return foo.getValue(i)
+
+	case *ast.SuperIndex:
+		index, err := i.expand(node.Index, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		indexStr, err := i.getString(index)
+		if err != nil {
+			return nil, err
+		}
+		return objectIndex(i, i.stack.getSelfBinding().super(), indexStr.getGoString())
+
+	case *ast.InSuper:
+		index, err := i.expand(node.Index, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		indexStr, err := i.getString(index)
+		if err != nil {
+			return nil, err
+		}
+		hasField := objectHasField(i.stack.getSelfBinding().super(), indexStr.getGoString(), withHidden)
+		return makeValueBoolean(hasField), nil
+
+	case *ast.Function:
+		return &valueFunction{
+			ec: makeClosure(i.stack.getCurrentEnv(a), node),
+		}, nil
+
+	case *ast.Apply:
+		// Eval target
+		target, err := i.expand(node.Target, nonTailCall)
+		if err != nil {
+			return nil, err
+		}
+		function, err := i.getFunction(target)
+		if err != nil {
+			return nil, err
+		}
+
+		// environment in which we can evaluate arguments
+		argEnv := i.stack.getCurrentEnv(a)
+		arguments := callArguments{
+			positional: make([]*cachedThunk, len(node.Arguments.Positional)),
+			named:      make([]namedCallArgument, len(node.Arguments.Named)),
+			tailstrict: node.TailStrict,
+		}
+		for i, arg := range node.Arguments.Positional {
+			arguments.positional[i] = &cachedThunk{env: &argEnv, body: arg.Expr}
+		}
+
+		for i, arg := range node.Arguments.Named {
+			arguments.named[i] = namedCallArgument{name: arg.Name, pv: &cachedThunk{env: &argEnv, body: arg.Arg}}
+		}
+		return i.evaluateTailCall(function, arguments, tc)
+
+	case *astMakeArrayElement:
+		arguments := callArguments{
+			positional: []*cachedThunk{
+				&cachedThunk{
+					content: intToValue(node.index),
+				},
+			},
+		}
+		return i.evaluateTailCall(node.function, arguments, tc)
+
+	default:
+		panic(fmt.Sprintf("Executing this AST type not implemented: %v", reflect.TypeOf(a)))
+	}
+}
+
 func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 	trace := traceElement{
 		loc:     a.Loc(),
@@ -598,6 +916,92 @@ func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 
 	default:
 		panic(fmt.Sprintf("Executing this AST type not implemented: %v", reflect.TypeOf(a)))
+	}
+}
+
+func (i *interpreter) manifestAndWriteExpanded(
+	buf *bytes.Buffer, v value, multiline bool, indent string) error {
+	manifested, err := i.manifestExpanded(v)
+	if err != nil {
+		return err
+	}
+	serializeJSON(manifested, multiline, indent, buf)
+	return nil
+}
+
+// manifestExpanded converts to an expanded representation.
+func (i *interpreter) manifestExpanded(v value) (interface{}, error) {
+	if i.stack.currentTrace == (traceElement{}) {
+		panic("manifesting expanded representation with empty traceElement")
+	}
+	switch v := v.(type) {
+
+	case *valueBoolean:
+		return v.value, nil
+
+		// TODO(jdb): Handle functions.
+	case *valueFunction:
+		return nil, nil
+
+	case *valueNumber:
+		return v.value, nil
+
+	case valueString:
+		return v.getGoString(), nil
+
+	case *valueNull:
+		return nil, nil
+
+	case *valueArray:
+		result := make([]interface{}, 0, len(v.elements))
+		for _, th := range v.elements {
+			elVal, err := i.evaluatePV(th)
+			if err != nil {
+				return nil, err
+			}
+			elem, err := i.manifestExpanded(elVal)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, elem)
+		}
+		return result, nil
+
+	case *valueObject:
+		fieldNames := objectFields(v, withoutHidden)
+		sort.Strings(fieldNames)
+
+		// TODO(jdb): How awful is it to avoid checking these assertions?
+		// I think it can only cause RUNTIME errors that we want to write out in some form
+		// instead of crashing manifestation.
+		// err := checkAssertions(i, v)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		result := make(map[string]interface{})
+
+		for _, fieldName := range fieldNames {
+			fieldVal, err := v.index(i, fieldName)
+			if err != nil {
+				return nil, err
+			}
+
+			field, err := i.manifestExpanded(fieldVal)
+			if err != nil {
+				return nil, err
+			}
+			result[fieldName] = field
+		}
+
+		return result, nil
+
+	default:
+		return nil, makeRuntimeError(
+			fmt.Sprintf("manifesting this value not implemented yet: %s", reflect.TypeOf(v)),
+			i.getCurrentStackTrace(),
+		)
+
 	}
 }
 
@@ -934,6 +1338,21 @@ func jsonToValue(i *interpreter, v interface{}) (value, error) {
 	default:
 		return nil, i.Error(fmt.Sprintf("Not a json type: %#+v", v))
 	}
+}
+
+// expandInCleanEnv evaluates an expanded Jsonnet in a clean environment.
+func (i *interpreter) expandInCleanEnv(env *environment, ast ast.Node, trimmable bool) (value, error) {
+	err := i.newCall(*env, trimmable)
+	if err != nil {
+		return nil, err
+	}
+	stackSize := len(i.stack.stack)
+
+	val, err := i.expand(ast, tailCall)
+
+	i.stack.popIfExists(stackSize)
+
+	return val, err
 }
 
 func (i *interpreter) EvalInCleanEnv(env *environment, ast ast.Node, trimmable bool) (value, error) {
@@ -1315,4 +1734,32 @@ func evaluateStream(node ast.Node, ext vmExtMap, tla vmExtMap, nativeFuncs map[s
 	manifested, err := i.manifestAndSerializeYAMLStream(result)
 	i.stack.clearCurrentTrace()
 	return manifested, err
+}
+
+func expand(i *interpreter, node ast.Node, tla vmExtMap) (string, error) {
+	evalLoc := ast.MakeLocationRangeMessage("During expansion")
+	evalTrace := traceElement{
+		loc: &evalLoc,
+	}
+	env := makeInitialEnv(node.Loc().FileName, i.baseStd)
+	i.stack.setCurrentTrace(evalTrace)
+	result, err := i.expandInCleanEnv(&env, node, false)
+	i.stack.clearCurrentTrace()
+	if err != nil {
+		return "", fmt.Errorf("error during expansion: %w", err)
+	}
+
+	var buf bytes.Buffer
+	manifestationLoc := ast.MakeLocationRangeMessage("During expanded manifestation")
+	manifestationTrace := traceElement{
+		loc: &manifestationLoc,
+	}
+	i.stack.setCurrentTrace(manifestationTrace)
+	err = i.manifestAndWriteExpanded(&buf, result, true, "")
+	i.stack.clearCurrentTrace()
+	if err != nil {
+		return "", fmt.Errorf("error during expanded manifestation: %w", err)
+	}
+	buf.WriteString("\n")
+	return buf.String(), nil
 }
