@@ -13,6 +13,6 @@ mkShell {
     rr
   ] ++ [ feh graphviz mupdf rlwrap ] ++ [ jsonnet-lint ];
   shellHook = ''
-    # ...
+    export PATH="$PATH:$(pwd)/result/bin"
   '';
 }

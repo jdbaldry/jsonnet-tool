@@ -26,12 +26,17 @@ func help(w io.Writer) {
 	}
 	fmt.Fprintf(w, `A tool for working with Jsonnet files.
 
-Usage:
-  %s dot <file>
-  %s layers <file>
-  %s imports <file>
-  %s symbols <file>
-  %s repl
+Produce a .dot diagram of the Jsonnet AST for <file>:
+  $ %s dot <file>
+Produce a JSON array of the layers of object evaluations for <file>:
+  $ %s layers <file>
+List the imports for <file>:
+  $ %s imports <file>
+List the referenceable symbols in <file>:
+  $ %s symbols <file>
+Run a Jsonnet REPL:
+  $ %s repl
+
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
@@ -136,6 +141,11 @@ func main() {
 	command, args = uncons(args)
 
 	switch command {
+
+	case "--help", "-h":
+		help(os.Stdout)
+		os.Exit(0)
+
 	case "dot":
 		if len(args) != 1 {
 			help(os.Stderr)

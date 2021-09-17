@@ -1,11 +1,17 @@
 # jsonnet-tool
 
-Tools for working with Jsonnet files.
+```console
+$ jsonnet-tool --help
+A tool for working with Jsonnet files.
 
-## Dependencies
-
-Outputs an array of dependency files for the given input file.
-
-## Stack
-
-Produces a JSON array of all the intermediate evaluations of the top level Jsonnet.
+Produce a .dot diagram of the Jsonnet AST for <file>:
+  $ jsonnet-tool dot <file>
+Produce a JSON array of the layers of object evaluations for <file>:
+  $ jsonnet-tool layers <file>
+List the imports for <file>:
+  $ jsonnet-tool imports <file>
+List the referenceable symbols in <file>:
+  $ jsonnet-tool symbols <file>
+Run a Jsonnet REPL:
+  $ jsonnet-tool repl
+```
