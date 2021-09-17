@@ -165,24 +165,25 @@ func main() {
 		}
 		fmt.Print(out)
 
-	case "expand":
+	case "imports":
 		if len(args) != 1 {
 			help(os.Stderr)
 			os.Exit(1)
 		}
 		file, _ := uncons(args)
 		vm := makeVM()
-		root, _, err := vm.ImportAST("", file)
+		imports, err := vm.FindDependencies("", []string{file})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to produce AST for file %s: %v\n", file, err)
+			fmt.Fprintf(os.Stderr, "Unable to find imports for file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		out, err := vm.Expand(root)
+		b, err := json.MarshalIndent(imports, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error expanding AST: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Unable to marshal to JSON: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Print(out)
+		os.Stdout.Write(b)
+		os.Stdout.Write([]byte{'\n'})
 
 	case "layers":
 		if len(args) != 1 {
@@ -202,26 +203,6 @@ func main() {
 			os.Exit(1)
 		}
 		b, err := json.MarshalIndent(layers, "", "  ")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to marshal to JSON: %v\n", err)
-			os.Exit(1)
-		}
-		os.Stdout.Write(b)
-		os.Stdout.Write([]byte{'\n'})
-
-	case "imports":
-		if len(args) != 1 {
-			help(os.Stderr)
-			os.Exit(1)
-		}
-		file, _ := uncons(args)
-		vm := makeVM()
-		imports, err := vm.FindDependencies("", []string{file})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to find imports for file %s: %v\n", file, err)
-			os.Exit(1)
-		}
-		b, err := json.MarshalIndent(imports, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to marshal to JSON: %v\n", err)
 			os.Exit(1)
