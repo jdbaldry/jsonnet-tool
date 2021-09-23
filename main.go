@@ -27,6 +27,8 @@ func help(w io.Writer) {
 
 Produce a .dot diagram of the Jsonnet AST for <file>:
   $ %s dot <file>
+Evaluate Jsonnet using the jsonnet-tool interpreter:
+  $ %s eval
 Produce a JSON array of the layers of object evaluations for <file>:
   $ %s layers <file>
 List the imports for <file>:
@@ -35,8 +37,7 @@ List the referenceable symbols in <file>:
   $ %s symbols <file>
 Run a Jsonnet REPL:
   $ %s repl
-
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 // makeVM creates a Jsonnet VM configured to import from the Jpaths specified in the
@@ -167,6 +168,19 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Print(out)
+
+	case "eval":
+		if len(args) != 1 {
+			help(os.Stderr)
+			os.Exit(1)
+		}
+		file, _ := uncons(args)
+		json, err := makeVM().EvaluateFile(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error evaluating Jsonnet for file %s:\n%v\n", file, err)
+			os.Exit(1)
+		}
+		fmt.Print(json)
 
 	case "imports":
 		if len(args) != 1 {
