@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 var (
 	command string
+	errExit = errors.New("exit")
 )
 
 // help writes help text.
@@ -74,42 +76,46 @@ type repl struct {
 	vm     *jsonnet.VM
 }
 
-func (r *repl) read() string {
+func (r *repl) read() (string, error) {
 	r.in.Scan()
-	input := r.in.Text()
-
-	if err := r.in.Err(); err != nil {
-		_, err = io.WriteString(r.err, fmt.Sprintf("Invalid input: %s", err))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
-			os.Exit(1)
-		}
-	}
-	return input
+	return r.in.Text(), r.in.Err()
 }
 
+// eval evaluates the input string.
+// It expects the string to be trimmed of preceding whitespace.
+// '\h' prints a help message. TODO: implement.
+// '\?' is an alias for \h. TODO: implement.
+// 'help' is an alias for \h. TODO: implement.
+// '\q' quits the REPL.
+// '\l' prints a list of namespace variables. TODO: implement.
+// '\l binds+=bind (COMMA binds+=bind)* SEMI_COLON' defines new variable bindings. TODO: implement.
+// '\d i' removes the ith local variable binding. TODO: implement.
+// '\f <file>' writes something? to a file. TODO: What should it write? Namespace bindings and... TODO: implement.
+// '\n' prints a list of namespaces. TODO: implement.
+// '\n i' switches to the ith namespace. TODO: implement.
+// Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
-	if input == "help" || input == "?" {
-		return `  Enter exit or quit to exit the repl.
-  Enter locals to see the local variables.
-  Enter ? or help to print this help again.
-`, nil
+	if len(input) == 0 {
+		return input, errors.New("no input string provided")
 	}
-	if strings.HasPrefix(input, "locals") {
-		if len(r.locals) == 0 {
-			return "", nil
+	switch input[0] {
+	case '\\':
+		if len(input) != 2 {
+			return "", fmt.Errorf("expected command such as \\h, got %s", input)
 		}
-		return strings.Join(append(r.locals, ";\n"), ";\n"), nil
+		switch input[1] {
+		case 'q':
+			return "bye!\n", errExit
+		default:
+			return "", fmt.Errorf("unknown command %s", input)
+		}
+	default:
+		result, err := r.vm.EvaluateAnonymousSnippet("repl", strings.Join(append(r.locals, input), ";"))
+		if err != nil {
+			return "", err
+		}
+		return result, nil
 	}
-	if strings.HasPrefix(input, "local") {
-		r.locals = append(r.locals, strings.Trim(input, ";"))
-		return "", nil
-	}
-	result, err := r.vm.EvaluateAnonymousSnippet("repl", strings.Join(append(r.locals, input), ";"))
-	if err != nil {
-		return "", err
-	}
-	return result, nil
 }
 
 // newREPL produces a REPL.
@@ -229,51 +235,36 @@ func main() {
 
 	case "repl":
 		const prompt = "repl> "
-
 		repl := newREPL(os.Stdin, os.Stdout, os.Stderr)
 
 		// read
-		_, err := io.WriteString(repl.out, prompt)
+		fmt.Fprint(repl.out, prompt)
+		input, err := repl.read()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
+			fmt.Fprintf(repl.err, "Error reading input: %v\n", err)
 			os.Exit(1)
 		}
-		input := repl.read()
 
 		for {
-			if input == "exit" || input == "quit" {
-				_, err = io.WriteString(repl.out, "bye!\n")
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
-					os.Exit(1)
-				}
-				os.Exit(0)
-			}
-
 			// eval
 			result, err := repl.eval(input)
 			if err != nil {
-				_, err = io.WriteString(repl.err, err.Error())
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error writing to REPL err: %v\n", err)
-					os.Exit(1)
+				if err == errExit {
+					fmt.Fprint(repl.out, result)
+					os.Exit(0)
 				}
+				fmt.Fprintf(repl.out, "Evaluation error: %v\n", err)
 			}
 
 			// print
-			_, err = io.WriteString(repl.out, result)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
-				os.Exit(1)
-			}
+			fmt.Fprint(repl.out, result)
 
 			// loop
-			_, err = io.WriteString(repl.out, prompt)
+			fmt.Fprint(repl.out, prompt)
+			input, err = repl.read()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error writing to REPL out: %v\n", err)
-				os.Exit(1)
+				fmt.Fprintf(repl.err, "Error reading input: %v\n", err)
 			}
-			input = repl.read()
 		}
 
 	case "symbols":
