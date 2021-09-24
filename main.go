@@ -72,6 +72,7 @@ type repl struct {
 	in     *bufio.Scanner
 	out    io.Writer
 	err    io.Writer
+	help   string
 	locals []string
 	vm     *jsonnet.VM
 }
@@ -83,9 +84,8 @@ func (r *repl) read() (string, error) {
 
 // eval evaluates the input string.
 // It expects the string to be trimmed of preceding whitespace.
-// '\h' prints a help message. TODO: implement.
-// '\?' is an alias for \h. TODO: implement.
-// 'help' is an alias for \h. TODO: implement.
+// '\h' prints a help message.
+// '\?' is an alias for \h.
 // '\q' quits the REPL.
 // '\l' prints a list of namespace variables. TODO: implement.
 // '\l binds+=bind (COMMA binds+=bind)* SEMI_COLON' defines new variable bindings. TODO: implement.
@@ -104,6 +104,8 @@ func (r *repl) eval(input string) (string, error) {
 			return "", fmt.Errorf("expected command such as \\h, got %s", input)
 		}
 		switch input[1] {
+		case 'h', '?':
+			return r.help, nil
 		case 'q':
 			return "bye!\n", errExit
 		default:
@@ -120,7 +122,19 @@ func (r *repl) eval(input string) (string, error) {
 
 // newREPL produces a REPL.
 func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
-	return repl{in: bufio.NewScanner(in), out: out, err: err, locals: []string{}, vm: makeVM()}
+	return repl{
+		in:  bufio.NewScanner(in),
+		out: out,
+		err: err,
+		help: `A Jsonnet REPL.
+
+\h prints this help message.
+\q quits the REPL.
+
+Anything else is evaluated as Jsonnet.
+`,
+		locals: []string{},
+		vm:     makeVM()}
 }
 
 type LocationRange struct {
@@ -238,6 +252,7 @@ func main() {
 		repl := newREPL(os.Stdin, os.Stdout, os.Stderr)
 
 		// read
+		fmt.Fprint(repl.out, repl.help)
 		fmt.Fprint(repl.out, prompt)
 		input, err := repl.read()
 		if err != nil {
