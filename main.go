@@ -405,7 +405,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Unable to produce AST for file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		symbols, err := findSymbols(&root)
+		symbols, err := findSymbols(&root, []string{"$"})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error processing symbols for file %s: %v\n", file, err)
 			os.Exit(1)
