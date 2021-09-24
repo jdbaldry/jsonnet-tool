@@ -117,6 +117,9 @@ func (r *repl) eval(input string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("invalid delete command index.")
 			}
+			if i < 0 || i > len(r.locals)-1 {
+				return "", fmt.Errorf("delete command index out of range")
+			}
 			r.locals = append(r.locals[:i], r.locals[i+1:]...)
 			return "", nil
 		case 'h', '?':
