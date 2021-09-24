@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/google/go-jsonnet"
@@ -90,10 +91,10 @@ func (r *repl) read() (string, error) {
 // '\q' quits the REPL.
 // '\l' prints a list of namespace variables.
 // '\l ID = EXPR' creates a new namespace variable.
-// '\d i' removes the ith local variable binding. TODO: implement.
+// '\d i' removes the ith namespace variable binding (zero indexed).
 // '\f <file>' writes something? to a file. TODO: What should it write? Namespace bindings and... TODO: implement.
 // '\n' prints a list of namespaces. TODO: implement.
-// '\n i' switches to the ith namespace. TODO: implement.
+// '\n i' switches to the ith namespace (zero indexed). TODO: implement.
 // Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
 	if len(input) == 0 {
@@ -105,6 +106,18 @@ func (r *repl) eval(input string) (string, error) {
 			return r.help, fmt.Errorf("expected command such as \\h, got %s", input)
 		}
 		switch input[1] {
+		case 'd':
+			re := regexp.MustCompile(`^\\d\s+([0-9]+)$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid delete command syntax. Wanted \\d INDEX")
+			}
+			i, err := strconv.Atoi(matches[1])
+			if err != nil {
+				return "", fmt.Errorf("invalid delete command index.")
+			}
+			r.locals = append(r.locals[:i], r.locals[i+1:]...)
+			return "", nil
 		case 'h', '?':
 			return r.help, nil
 		case 'l':
@@ -150,10 +163,11 @@ func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
 		err: err,
 		help: `A Jsonnet REPL.
 
-\h prints this help message.
-\l prints the namespace variables.
-\l ID = EXPR; adds a new namespace variable.
-\q quits the REPL.
+\d i            removes the ith namespace variable binding (zero indexed).
+\h              prints this help message.
+\l              prints the namespace variables.
+\l ID = EXPR    adds a new namespace variable.
+\q              quits the REPL.
 
 Anything else is evaluated as Jsonnet.
 `,
