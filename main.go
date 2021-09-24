@@ -104,7 +104,7 @@ func (r *repl) read() (string, error) {
 // '\h' prints a help message.
 // '\?' is an alias for \h.
 // '\l' prints a list of namespace variables.
-// '\l ID = EXPR' creates a new namespace variable.
+// '\l EXPR' creates a new namespace variable expression that is prepended to evaluation.
 // '\n' creates a new namespace.
 // '\n i' switches to the ith namespace (zero indexed).
 // '\w file' writes the namespace variables and next Jsonnet expression to file.
@@ -140,17 +140,11 @@ func (r *repl) eval(input string) (string, error) {
 			if len(input) == 2 {
 				builder := strings.Builder{}
 				for i, s := range r.locals[r.namespace] {
-					builder.WriteString(fmt.Sprintf("[%d] local %s;\n", i, s))
+					builder.WriteString(fmt.Sprintf("[%d] %s;\n", i, s))
 				}
 				return builder.String(), nil
 			}
-
-			re := regexp.MustCompile(`^\\l\s+([a-zA-Z_][a-zA-Z0-9_]*\s+=\s+[^;]+);?$`)
-			matches := re.FindStringSubmatch(input)
-			if len(matches) != 2 {
-				return "", fmt.Errorf("invalid local command syntax. Wanted \\l ID = EXPR")
-			}
-			r.locals[r.namespace] = append(r.locals[r.namespace], matches[1])
+			r.locals[r.namespace] = append(r.locals[r.namespace], strings.Trim(strings.TrimPrefix(input, `\l`), " ;"))
 			return "", nil
 		case 'n':
 			if len(input) == 2 {
@@ -192,7 +186,7 @@ func (r *repl) eval(input string) (string, error) {
 	default:
 		builder := strings.Builder{}
 		for _, s := range r.locals[r.namespace] {
-			builder.WriteString(fmt.Sprintf("local %s;\n", s))
+			builder.WriteString(fmt.Sprintf("%s;\n", s))
 		}
 		builder.WriteString(input)
 		if r.file != "" {
@@ -217,12 +211,12 @@ func newREPL(in io.Reader) repl {
 		file: "",
 		help: `A Jsonnet REPL.
 
-\d i            removes the ith namespace variable binding (zero indexed).
+\d i            removes the ith namespace variable expression (zero indexed).
 \n              creates a new namespace.
 \n i            switches to the ith namespace (zero indexed).
 \h              prints this help message.
 \l              prints the namespace variables.
-\l ID = EXPR    adds a new namespace variable.
+\l EXPR         creates a new namespace variable expression that is prepended to evaluation.
 \q              quits the REPL.
 \w file         writes the namespace variables and next Jsonnet expression to file.
 Anything else is evaluated as Jsonnet.
