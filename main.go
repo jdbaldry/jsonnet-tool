@@ -99,7 +99,7 @@ func (r *repl) read() (string, error) {
 // Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
 	if len(input) == 0 {
-		return input, errors.New("no input string provided")
+		return "", errExit
 	}
 	switch input[0] {
 	case '\\':
