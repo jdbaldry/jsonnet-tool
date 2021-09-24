@@ -17,6 +17,16 @@ type symbol struct {
 func findSymbols(node *ast.Node) (symbols []symbol, err error) {
 	switch i := (*node).(type) {
 	case *ast.DesugaredObject:
+		for _, local := range i.Locals {
+			symbols = append(symbols, symbol{
+				Identifier: string(local.Variable),
+				Context:    i.Context(),
+				LocationRange: LocationRange{
+					FileName: i.Loc().FileName,
+					Begin:    i.Loc().Begin,
+					End:      i.Loc().End,
+				}})
+		}
 		// The direct children of a DesugaredObject node are the field keys.
 		// TODO: evaluate expressions
 		for _, node := range parser.DirectChildren(i) {
