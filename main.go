@@ -69,9 +69,11 @@ func makeVM() *jsonnet.VM {
 	return vm
 }
 
+// locals are a slice of local variable binding expressions that are prepended to Jsonnet evaluations.
+type locals []string
+
 // repl can be used for interactive evaluation of Jsonnet.
 type repl struct {
-	locals []string
 	// in is where the REPL reads input from.
 	in *bufio.Scanner
 	// file is where the REPL will write out the current namespace on the next loop.
@@ -79,6 +81,9 @@ type repl struct {
 	// help is the REPL help text.
 	help string
 	// locals are a local variable expressions partitioned by namespace index.
+	locals []locals
+	// namespace is the index of the current namespace.
+	namespace int
 	// vm performs the Jsonnet evaluations.
 	vm *jsonnet.VM
 }
@@ -100,8 +105,8 @@ func (r *repl) read() (string, error) {
 // '\?' is an alias for \h.
 // '\l' prints a list of namespace variables.
 // '\l ID = EXPR' creates a new namespace variable.
-// '\n' prints a list of namespaces. TODO: implement.
-// '\n i' switches to the ith namespace (zero indexed). TODO: implement.
+// '\n' creates a new namespace.
+// '\n i' switches to the ith namespace (zero indexed).
 // '\w file' writes the namespace variables and next Jsonnet expression to file.
 // Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
@@ -124,17 +129,17 @@ func (r *repl) eval(input string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("invalid delete command index.")
 			}
-			if i < 0 || i > len(r.locals)-1 {
+			if i < 0 || i > len(r.locals[r.namespace])-1 {
 				return "", fmt.Errorf("delete command index out of range")
 			}
-			r.locals = append(r.locals[:i], r.locals[i+1:]...)
+			r.locals[r.namespace] = append(r.locals[r.namespace][:i], r.locals[r.namespace][i+1:]...)
 			return "", nil
 		case 'h', '?':
 			return r.help, nil
 		case 'l':
 			if len(input) == 2 {
 				builder := strings.Builder{}
-				for i, s := range r.locals {
+				for i, s := range r.locals[r.namespace] {
 					builder.WriteString(fmt.Sprintf("[%d] local %s;\n", i, s))
 				}
 				return builder.String(), nil
@@ -145,7 +150,27 @@ func (r *repl) eval(input string) (string, error) {
 			if len(matches) != 2 {
 				return "", fmt.Errorf("invalid local command syntax. Wanted \\l ID = EXPR")
 			}
-			r.locals = append(r.locals, matches[1])
+			r.locals[r.namespace] = append(r.locals[r.namespace], matches[1])
+			return "", nil
+		case 'n':
+			if len(input) == 2 {
+				r.locals = append(r.locals, []string{})
+				r.namespace = len(r.locals) - 1
+				return "", nil
+			}
+			re := regexp.MustCompile(`^\\n\s+([0-9]+)$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid namespace command syntax. Wanted \\n INDEX")
+			}
+			i, err := strconv.Atoi(matches[1])
+			if err != nil {
+				return "", fmt.Errorf("invalid namespace command index.")
+			}
+			if i < 0 || i > len(r.locals)-1 {
+				return "", fmt.Errorf("namespace command index out of range")
+			}
+			r.namespace = i
 			return "", nil
 		case 'q':
 			return "bye!\n", errExit
@@ -166,7 +191,7 @@ func (r *repl) eval(input string) (string, error) {
 		}
 	default:
 		builder := strings.Builder{}
-		for _, s := range r.locals {
+		for _, s := range r.locals[r.namespace] {
 			builder.WriteString(fmt.Sprintf("local %s;\n", s))
 		}
 		builder.WriteString(input)
@@ -193,6 +218,8 @@ func newREPL(in io.Reader) repl {
 		help: `A Jsonnet REPL.
 
 \d i            removes the ith namespace variable binding (zero indexed).
+\n              creates a new namespace.
+\n i            switches to the ith namespace (zero indexed).
 \h              prints this help message.
 \l              prints the namespace variables.
 \l ID = EXPR    adds a new namespace variable.
@@ -200,8 +227,10 @@ func newREPL(in io.Reader) repl {
 \w file         writes the namespace variables and next Jsonnet expression to file.
 Anything else is evaluated as Jsonnet.
 `,
-		locals: []string{},
-		vm:     makeVM()}
+		locals:    make([]locals, 1),
+		namespace: 0,
+		vm:        makeVM(),
+	}
 }
 
 type LocationRange struct {
