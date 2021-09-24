@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-jsonnet"
@@ -87,8 +88,8 @@ func (r *repl) read() (string, error) {
 // '\h' prints a help message.
 // '\?' is an alias for \h.
 // '\q' quits the REPL.
-// '\l' prints a list of namespace variables. TODO: implement.
-// '\l binds+=bind (COMMA binds+=bind)* SEMI_COLON' defines new variable bindings. TODO: implement.
+// '\l' prints a list of namespace variables.
+// '\l ID = EXPR' creates a new namespace variable.
 // '\d i' removes the ith local variable binding. TODO: implement.
 // '\f <file>' writes something? to a file. TODO: What should it write? Namespace bindings and... TODO: implement.
 // '\n' prints a list of namespaces. TODO: implement.
@@ -100,19 +101,40 @@ func (r *repl) eval(input string) (string, error) {
 	}
 	switch input[0] {
 	case '\\':
-		if len(input) != 2 {
-			return "", fmt.Errorf("expected command such as \\h, got %s", input)
+		if len(input) < 2 {
+			return r.help, fmt.Errorf("expected command such as \\h, got %s", input)
 		}
 		switch input[1] {
 		case 'h', '?':
 			return r.help, nil
+		case 'l':
+			if len(input) == 2 {
+				builder := strings.Builder{}
+				for i, s := range r.locals {
+					builder.WriteString(fmt.Sprintf("[%d] local %s;\n", i, s))
+				}
+				return builder.String(), nil
+			}
+
+			re := regexp.MustCompile(`^\\l\s+([a-zA-Z_][a-zA-Z0-9_]*\s+=\s+[^;]+);?$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid local command syntax. Wanted \\l ID = EXPR")
+			}
+			r.locals = append(r.locals, matches[1])
+			return "", nil
 		case 'q':
 			return "bye!\n", errExit
 		default:
 			return "", fmt.Errorf("unknown command %s", input)
 		}
 	default:
-		result, err := r.vm.EvaluateAnonymousSnippet("repl", strings.Join(append(r.locals, input), ";"))
+		builder := strings.Builder{}
+		for _, s := range r.locals {
+			builder.WriteString(fmt.Sprintf("local %s;\n", s))
+		}
+		builder.WriteString(input)
+		result, err := r.vm.EvaluateAnonymousSnippet("repl", builder.String())
 		if err != nil {
 			return "", err
 		}
@@ -129,6 +151,8 @@ func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
 		help: `A Jsonnet REPL.
 
 \h prints this help message.
+\l prints the namespace variables.
+\l ID = EXPR; adds a new namespace variable.
 \q quits the REPL.
 
 Anything else is evaluated as Jsonnet.
