@@ -71,15 +71,22 @@ func makeVM() *jsonnet.VM {
 
 // repl can be used for interactive evaluation of Jsonnet.
 type repl struct {
-	in     *bufio.Scanner
-	out    io.Writer
-	err    io.Writer
-	file   string
-	help   string
 	locals []string
-	vm     *jsonnet.VM
+	// in is where the REPL reads input from.
+	in *bufio.Scanner
+	// file is where the REPL will write out the current namespace on the next loop.
+	file string
+	// help is the REPL help text.
+	help string
+	// locals are a local variable expressions partitioned by namespace index.
+	// vm performs the Jsonnet evaluations.
+	vm *jsonnet.VM
 }
 
+// prompt returns the REPL prompt.
+func (r *repl) prompt() string { return fmt.Sprintf("repl [%d]> ", r.namespace) }
+
+// read reads a line from the repl input.
 func (r *repl) read() (string, error) {
 	r.in.Scan()
 	return r.in.Text(), r.in.Err()
@@ -179,11 +186,9 @@ func (r *repl) eval(input string) (string, error) {
 }
 
 // newREPL produces a REPL.
-func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
+func newREPL(in io.Reader) repl {
 	return repl{
 		in:   bufio.NewScanner(in),
-		out:  out,
-		err:  err,
 		file: "",
 		help: `A Jsonnet REPL.
 
@@ -310,15 +315,14 @@ func main() {
 		os.Stdout.Write([]byte{'\n'})
 
 	case "repl":
-		const prompt = "repl> "
-		repl := newREPL(os.Stdin, os.Stdout, os.Stderr)
+		repl := newREPL(os.Stdin)
 
 		// read
-		fmt.Fprint(repl.out, repl.help)
-		fmt.Fprint(repl.out, prompt)
+		fmt.Print(repl.help)
+		fmt.Print(repl.prompt())
 		input, err := repl.read()
 		if err != nil {
-			fmt.Fprintf(repl.err, "Error reading input: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -327,20 +331,19 @@ func main() {
 			result, err := repl.eval(input)
 			if err != nil {
 				if err == errExit {
-					fmt.Fprint(repl.out, result)
 					os.Exit(0)
 				}
-				fmt.Fprintf(repl.out, "Evaluation error: %v\n", err)
+				fmt.Fprintf(os.Stdout, "Evaluation error: %v\n", err)
 			}
 
 			// print
-			fmt.Fprint(repl.out, result)
+			fmt.Print(result)
 
 			// loop
-			fmt.Fprint(repl.out, prompt)
+			fmt.Print(repl.prompt())
 			input, err = repl.read()
 			if err != nil {
-				fmt.Fprintf(repl.err, "Error reading input: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 			}
 		}
 
