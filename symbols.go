@@ -26,9 +26,9 @@ func findSymbols(node *ast.Node, context []string) (symbols []symbol, err error)
 				Type:       "objlocal",
 				Context:    strings.Join(context, "."),
 				LocationRange: LocationRange{
-					FileName: i.Loc().FileName,
-					Begin:    i.Loc().Begin,
-					End:      i.Loc().End,
+					FileName: local.LocRange.FileName,
+					Begin:    local.LocRange.Begin,
+					End:      local.LocRange.End,
 				}})
 		}
 		for _, field := range i.Fields {
@@ -40,9 +40,9 @@ func findSymbols(node *ast.Node, context []string) (symbols []symbol, err error)
 					Context:    strings.Join(context, "."),
 					Type:       "field",
 					LocationRange: LocationRange{
-						FileName: i.Loc().FileName,
-						Begin:    i.Loc().Begin,
-						End:      i.Loc().End,
+						FileName: field.LocRange.FileName,
+						Begin:    field.LocRange.Begin,
+						End:      field.LocRange.End,
 					}})
 				children, err := findSymbols(&field.Body, append(context, name.Value))
 				if err != nil {
