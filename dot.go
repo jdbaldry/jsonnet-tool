@@ -9,18 +9,22 @@ import (
 )
 
 // toString provides a reasonably concise string representation of the Jsonnet AST node.
-func toString(n ast.Node) string {
-	switch i := n.(type) {
+// loc is useful as not all nodes have location information. For example, object fields have a location,
+// but the LiteralString is the Name of a field does not.
+func toString(node ast.Node, loc *ast.LocationRange) string {
+	switch node := node.(type) {
 	case *ast.Binary:
-		return fmt.Sprintf("[%s] %p %T %s", i.Loc(), i, i, i.Op)
+		return fmt.Sprintf("[%s] %p %T %s", loc, node, node, node.Op)
 	case *ast.DesugaredObject:
-		return fmt.Sprintf("[%s] %p %T", i.Loc(), i, i)
+		return fmt.Sprintf("[%s] %p %T", loc, node, node)
 	case *ast.LiteralString:
-		return fmt.Sprintf("%T %p %s", i, i, i.Value)
+		return fmt.Sprintf("[%s] %p %T %s", loc, node, node, node.Value)
 	case *ast.Import:
-		return fmt.Sprintf("[%s] %p %T", i.Loc(), i, i)
+		return fmt.Sprintf("[%s] %p %T", loc, node, node)
+	case *ast.Var:
+		return fmt.Sprintf("[%s] %p %T %s", loc, node, node, node.Id)
 	default:
-		return fmt.Sprintf("[%s] %p %T", i.Loc(), i, i)
+		return fmt.Sprintf("[%s] %p %T", loc, node, node)
 	}
 }
 
@@ -31,13 +35,28 @@ func dot(root ast.Node) (string, error) {
 	err := traverse(root,
 		nop,
 		func(node *ast.Node) error {
-			for _, child := range parser.Children(*node) {
-				builder.WriteString(fmt.Sprintf("  \"%s\"->\"%s\"\n",
-					strings.ReplaceAll(toString(*node), `"`, `\"`),
-					strings.ReplaceAll(toString(child), `"`, `\"`)),
-				)
+			switch node := (*node).(type) {
+			case *ast.DesugaredObject:
+				for _, field := range node.Fields {
+					builder.WriteString(fmt.Sprintf("  \"%s\"->\"%s\"\n",
+						strings.ReplaceAll(toString(node, node.Loc()), `"`, `\"`),
+						strings.ReplaceAll(toString(field.Name, &field.LocRange), `"`, `\"`)),
+					)
+					builder.WriteString(fmt.Sprintf("  \"%s\"->\"%s\"\n",
+						strings.ReplaceAll(toString(field.Name, &field.LocRange), `"`, `\"`),
+						strings.ReplaceAll(toString(field.Body, field.Body.Loc()), `"`, `\"`)),
+					)
+				}
+				return nil
+			default:
+				for _, child := range parser.Children(node) {
+					builder.WriteString(fmt.Sprintf("  \"%s\"->\"%s\"\n",
+						strings.ReplaceAll(toString(node, node.Loc()), `"`, `\"`),
+						strings.ReplaceAll(toString(child, child.Loc()), `"`, `\"`)),
+					)
+				}
+				return nil
 			}
-			return nil
 		},
 		nop,
 	)
