@@ -76,20 +76,22 @@ type locals []string
 type repl struct {
 	// in is where the REPL reads input from.
 	in *bufio.Scanner
-	// file is where the REPL will write out the current namespace on the next loop.
-	file string
+	// evalFile is where the REPL will write out evaluations partitioned by namespace index.
+	evalFile []string
+	// namespaceFile is where the REPL will write out the current namespace partitioned by namespace index.
+	namespaceFile []string
 	// help is the REPL help text.
 	help string
 	// locals are a local variable expressions partitioned by namespace index.
 	locals []locals
-	// namespace is the index of the current namespace.
-	namespace int
+	// ns is the index of the current namespace.
+	ns int
 	// vm performs the Jsonnet evaluations.
 	vm *jsonnet.VM
 }
 
 // prompt returns the REPL prompt.
-func (r *repl) prompt() string { return fmt.Sprintf("repl [%d]> ", r.namespace) }
+func (r *repl) prompt() string { return fmt.Sprintf("repl [%d]> ", r.ns) }
 
 // read reads a line from the repl input.
 func (r *repl) read() (string, error) {
@@ -99,15 +101,7 @@ func (r *repl) read() (string, error) {
 
 // eval evaluates the input string.
 // It expects the string to be trimmed of preceding whitespace.
-// '\d i' removes the ith namespace variable binding (zero indexed).
-// '\f file' writes output of next evaluation to a file. TODO: implement
-// '\h' prints a help message.
-// '\?' is an alias for \h.
-// '\l' prints a list of namespace variables.
-// '\l EXPR' creates a new namespace variable expression that is prepended to evaluation.
-// '\n' creates a new namespace.
-// '\n i' switches to the ith namespace (zero indexed).
-// '\w file' writes the namespace variables and next Jsonnet expression to file.
+// See the repl.help for behaviors.
 // Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
 	if len(input) == 0 {
@@ -129,28 +123,42 @@ func (r *repl) eval(input string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("invalid delete command index.")
 			}
-			if i < 0 || i > len(r.locals[r.namespace])-1 {
+			if i < 0 || i > len(r.locals[r.ns])-1 {
 				return "", fmt.Errorf("delete command index out of range")
 			}
-			r.locals[r.namespace] = append(r.locals[r.namespace][:i], r.locals[r.namespace][i+1:]...)
+			r.locals[r.ns] = append(r.locals[r.ns][:i], r.locals[r.ns][i+1:]...)
 			return "", nil
+		case 'f':
+			re := regexp.MustCompile(`^\\f\s+(.*)$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid file command syntax. Wanted \\f file")
+			}
+			path, err := filepath.Abs(matches[1])
+			if err != nil {
+				return "", fmt.Errorf("unable to determine path to file: %w", err)
+			}
+			r.evalFile[r.ns] = path
+			return fmt.Sprintf("Writing evaluations to file %s\n", r.evalFile[r.ns]), nil
 		case 'h', '?':
 			return r.help, nil
 		case 'l':
 			if len(input) == 2 {
 				builder := strings.Builder{}
-				for i, s := range r.locals[r.namespace] {
+				for i, s := range r.locals[r.ns] {
 					builder.WriteString(fmt.Sprintf("[%d] %s;\n", i, s))
 				}
 				return builder.String(), nil
 			}
-			r.locals[r.namespace] = append(r.locals[r.namespace], strings.Trim(strings.TrimPrefix(input, `\l`), " ;"))
+			r.locals[r.ns] = append(r.locals[r.ns], strings.Trim(strings.TrimPrefix(input, `\l`), " ;"))
 			return "", nil
 		case 'n':
 			if len(input) == 2 {
 				r.locals = append(r.locals, []string{})
-				r.namespace = len(r.locals) - 1
-				return "", nil
+				r.evalFile = append(r.evalFile, "")
+				r.namespaceFile = append(r.namespaceFile, "")
+				r.ns = len(r.locals) - 1
+				return fmt.Sprintf("Switched to namespace %d\n", r.ns), nil
 			}
 			re := regexp.MustCompile(`^\\n\s+([0-9]+)$`)
 			matches := re.FindStringSubmatch(input)
@@ -164,8 +172,16 @@ func (r *repl) eval(input string) (string, error) {
 			if i < 0 || i > len(r.locals)-1 {
 				return "", fmt.Errorf("namespace command index out of range")
 			}
-			r.namespace = i
-			return "", nil
+			r.ns = i
+			builder := strings.Builder{}
+			builder.WriteString(fmt.Sprintf("Switched to namespace %d\n", r.ns))
+			if r.evalFile[r.ns] != "" {
+				builder.WriteString(fmt.Sprintf("Writing evaluations to file %s\n", r.evalFile[r.ns]))
+			}
+			if r.namespaceFile[r.ns] != "" {
+				builder.WriteString(fmt.Sprintf("Writing namespace to file %s\n", r.namespaceFile[r.ns]))
+			}
+			return builder.String(), nil
 		case 'q':
 			return "bye!\n", errExit
 		case 'w':
@@ -178,27 +194,32 @@ func (r *repl) eval(input string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("unable to determine path to file: %w", err)
 			}
-			r.file = path
-			return fmt.Sprintf("The next REPL loop will write this namespace to file %s", r.file), nil
+			r.namespaceFile[r.ns] = path
+			return fmt.Sprintf("Writing namespace to file %s\n", r.namespaceFile[r.ns]), nil
 		default:
 			return "", fmt.Errorf("unknown command %s", input)
 		}
 	default:
 		builder := strings.Builder{}
-		for _, s := range r.locals[r.namespace] {
+		for _, s := range r.locals[r.ns] {
 			builder.WriteString(fmt.Sprintf("%s;\n", s))
 		}
 		builder.WriteString(input)
-		if r.file != "" {
-			err := os.WriteFile(r.file, []byte(builder.String()), 0644)
-			r.file = ""
+		if r.namespaceFile[r.ns] != "" {
+			err := os.WriteFile(r.namespaceFile[r.ns], []byte(builder.String()), 0644)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("unable to write namespace to file %s: %w", r.namespaceFile, err)
 			}
 		}
 		result, err := r.vm.EvaluateAnonymousSnippet("repl", builder.String())
 		if err != nil {
 			return "", err
+		}
+		if r.evalFile[r.ns] != "" {
+			err := os.WriteFile(r.evalFile[r.ns], []byte(result), 0644)
+			if err != nil {
+				return "", fmt.Errorf("unable to write evaluation to file %s: %w", r.evalFile, err)
+			}
 		}
 		return result, nil
 	}
@@ -207,23 +228,25 @@ func (r *repl) eval(input string) (string, error) {
 // newREPL produces a REPL.
 func newREPL(in io.Reader) repl {
 	return repl{
-		in:   bufio.NewScanner(in),
-		file: "",
+		in:            bufio.NewScanner(in),
+		evalFile:      make([]string, 1),
+		namespaceFile: make([]string, 1),
 		help: `A Jsonnet REPL.
 
 \d i            removes the ith namespace variable expression (zero indexed).
+\f FILE         writes subsequent evaluation of the current namespace to FILE.
 \n              creates a new namespace.
 \n i            switches to the ith namespace (zero indexed).
 \h              prints this help message.
 \l              prints the namespace variables.
-\l EXPR         creates a new namespace variable expression that is prepended to evaluation.
+\l EXPR         creates a new namespace EXPR that is prepended to evaluation.
 \q              quits the REPL.
-\w file         writes the namespace variables and next Jsonnet expression to file.
+\w FILE         writes the state of the current namespace to FILE.
 Anything else is evaluated as Jsonnet.
 `,
-		locals:    make([]locals, 1),
-		namespace: 0,
-		vm:        makeVM(),
+		locals: make([]locals, 1),
+		ns:     0,
+		vm:     makeVM(),
 	}
 }
 
