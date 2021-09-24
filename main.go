@@ -74,6 +74,7 @@ type repl struct {
 	in     *bufio.Scanner
 	out    io.Writer
 	err    io.Writer
+	file   string
 	help   string
 	locals []string
 	vm     *jsonnet.VM
@@ -86,15 +87,15 @@ func (r *repl) read() (string, error) {
 
 // eval evaluates the input string.
 // It expects the string to be trimmed of preceding whitespace.
+// '\d i' removes the ith namespace variable binding (zero indexed).
+// '\f file' writes output of next evaluation to a file. TODO: implement
 // '\h' prints a help message.
 // '\?' is an alias for \h.
-// '\q' quits the REPL.
 // '\l' prints a list of namespace variables.
 // '\l ID = EXPR' creates a new namespace variable.
-// '\d i' removes the ith namespace variable binding (zero indexed).
-// '\f <file>' writes something? to a file. TODO: What should it write? Namespace bindings and... TODO: implement.
 // '\n' prints a list of namespaces. TODO: implement.
 // '\n i' switches to the ith namespace (zero indexed). TODO: implement.
+// '\w file' writes the namespace variables and next Jsonnet expression to file.
 // Anything else is evaluated as Jsonnet input.
 func (r *repl) eval(input string) (string, error) {
 	if len(input) == 0 {
@@ -138,6 +139,18 @@ func (r *repl) eval(input string) (string, error) {
 			return "", nil
 		case 'q':
 			return "bye!\n", errExit
+		case 'w':
+			re := regexp.MustCompile(`^\\w\s+(.*)$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid write command syntax. Wanted \\w file")
+			}
+			path, err := filepath.Abs(matches[1])
+			if err != nil {
+				return "", fmt.Errorf("unable to determine path to file: %w", err)
+			}
+			r.file = path
+			return fmt.Sprintf("The next REPL loop will write this namespace to file %s", r.file), nil
 		default:
 			return "", fmt.Errorf("unknown command %s", input)
 		}
@@ -147,6 +160,13 @@ func (r *repl) eval(input string) (string, error) {
 			builder.WriteString(fmt.Sprintf("local %s;\n", s))
 		}
 		builder.WriteString(input)
+		if r.file != "" {
+			err := os.WriteFile(r.file, []byte(builder.String()), 0644)
+			r.file = ""
+			if err != nil {
+				return "", err
+			}
+		}
 		result, err := r.vm.EvaluateAnonymousSnippet("repl", builder.String())
 		if err != nil {
 			return "", err
@@ -158,9 +178,10 @@ func (r *repl) eval(input string) (string, error) {
 // newREPL produces a REPL.
 func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
 	return repl{
-		in:  bufio.NewScanner(in),
-		out: out,
-		err: err,
+		in:   bufio.NewScanner(in),
+		out:  out,
+		err:  err,
+		file: "",
 		help: `A Jsonnet REPL.
 
 \d i            removes the ith namespace variable binding (zero indexed).
@@ -168,7 +189,7 @@ func newREPL(in io.Reader, out io.Writer, err io.Writer) repl {
 \l              prints the namespace variables.
 \l ID = EXPR    adds a new namespace variable.
 \q              quits the REPL.
-
+\w file         writes the namespace variables and next Jsonnet expression to file.
 Anything else is evaluated as Jsonnet.
 `,
 		locals: []string{},
