@@ -1,7 +1,3 @@
-// Taken from https://github.com/google/go-jsonnet/blob/b00b56c3356a94a72e35a3ace6625e256b76fe42/internal/parser/context.go
-// until it is included in the public ast or astutil packages.
-// specialChildren has been made exported.
-
 /*
 Copyright 2017 Google Inc. All rights reserved.
 
@@ -277,12 +273,12 @@ func inDesugaredObjectSpecialChildren(obj *ast.DesugaredObject) ast.Nodes {
 	return result
 }
 
-// SpecialChildren returns children that are neither direct nor thunked,
+// specialChildren returns children that are neither direct nor thunked,
 // e.g. object field body.
 // These nodes are evaluated in a different environment from their parent.
 //
 // It supports ASTs before and after desugaring.
-func SpecialChildren(node ast.Node) []ast.Node {
+func specialChildren(node ast.Node) []ast.Node {
 	switch node := node.(type) {
 	case *ast.Apply:
 		return nil
@@ -352,7 +348,7 @@ func SpecialChildren(node ast.Node) []ast.Node {
 	case *ast.Parens:
 		return nil
 	}
-	panic(fmt.Sprintf("SpecialChildren: Unknown node %#v", node))
+	panic(fmt.Sprintf("specialChildren: Unknown node %#v", node))
 }
 
 // Children returns all children of a node. It supports ASTs before and after desugaring.
@@ -360,7 +356,7 @@ func Children(node ast.Node) []ast.Node {
 	var result []ast.Node
 	result = append(result, DirectChildren(node)...)
 	result = append(result, thunkChildren(node)...)
-	result = append(result, SpecialChildren(node)...)
+	result = append(result, specialChildren(node)...)
 	return result
 }
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/parser"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
 )
 
 // symbol is a referencable symbol in a Jsonnet file.

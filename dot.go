@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/parser"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
 )
 
 // toString provides a reasonably concise string representation of the Jsonnet AST node.

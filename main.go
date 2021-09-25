@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
 )
 
 var (
@@ -32,7 +34,9 @@ func help(w io.Writer) {
 Produce a .dot diagram of the Jsonnet AST for <file>:
   $ %s dot <file>
 Evaluate Jsonnet using the jsonnet-tool interpreter:
-  $ %s eval
+  $ %s eval <file>
+Produce an expanded Jsonnet representation:
+  $ %s expand <file>
 Produce a JSON array of the layers of object evaluations for <file>:
   $ %s layers <file>
 List the imports for <file>:
@@ -41,7 +45,7 @@ List the referenceable symbols in <file>:
   $ %s symbols <file>
 Run a Jsonnet REPL:
   $ %s repl
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 // makeVM creates a Jsonnet VM configured to import from the Jpaths specified in the
@@ -284,6 +288,8 @@ func main() {
 		os.Exit(0)
 
 	case "dot":
+		// TODO: dot should traverse the raw AST and not the desugared AST.
+		// Perhaps there is a use in doing both?
 		if len(args) != 1 {
 			help(os.Stderr)
 			os.Exit(1)
@@ -310,10 +316,31 @@ func main() {
 		file, _ := uncons(args)
 		json, err := makeVM().EvaluateFile(file)
 		if err != nil {
+			// The newline after the initial error allows this tools error
+			// output to match the regexps used by flycheck (and probably
+			// other editor error checkers).
 			fmt.Fprintf(os.Stderr, "Error evaluating Jsonnet for file %s:\n%v\n", file, err)
 			os.Exit(1)
 		}
 		fmt.Print(json)
+
+	case "expand":
+		if len(args) != 1 {
+			help(os.Stderr)
+			os.Exit(1)
+		}
+		file, _ := uncons(args)
+		input, err := ioutil.ReadFile(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file, err)
+			os.Exit(1)
+		}
+		_, _, err = parser.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error importing AST for file %s: %v\n", file, err)
+			os.Exit(1)
+		}
+		// TODO: visit the raw AST in a similar way that jsonnetfmt does but instead return expanded forms.
 
 	case "imports":
 		if len(args) != 1 {
