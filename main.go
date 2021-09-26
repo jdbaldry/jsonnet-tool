@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/formatter"
 	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
 )
 
@@ -335,12 +336,20 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		_, _, err = parser.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
+		root, finalFodder, err := parser.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing AST for file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		// TODO: visit the raw AST in a similar way that jsonnetfmt does but instead return expanded forms.
+		capturer := formatter.NewCapturer()
+		formatter.VisitFile(capturer, &root, &finalFodder)
+		expander := formatter.NewExpanderFromCapturer(capturer)
+		formatter.VisitFile(expander, &root, &finalFodder)
+		u := &formatter.Unparser{}
+		u.Unparse(root, false)
+		u.Fill(finalFodder, true, false)
+		u.Write("\n")
+		fmt.Print(u.String())
 
 	case "imports":
 		if len(args) != 1 {
