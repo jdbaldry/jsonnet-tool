@@ -19,7 +19,7 @@ package formatter
 import (
 	"github.com/google/go-jsonnet/ast"
 	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
-	"github.com/google/go-jsonnet/internal/pass"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/pass"
 )
 
 // EnforceStringStyle is a formatter pass that manages string literals

@@ -18,7 +18,7 @@ package formatter
 
 import (
 	"github.com/google/go-jsonnet/ast"
-	"github.com/google/go-jsonnet/internal/pass"
+	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/pass"
 )
 
 // FixNewlines is a formatter pass that adds newlines inside complex structures
