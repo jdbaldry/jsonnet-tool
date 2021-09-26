@@ -23,16 +23,16 @@ import (
 	"github.com/google/go-jsonnet/ast"
 )
 
-type unparser struct {
+type Unparser struct {
 	buf     bytes.Buffer
 	options Options
 }
 
-func (u *unparser) write(str string) {
+func (u *Unparser) Write(str string) {
 	u.buf.WriteString(str)
 }
 
-// fill Pretty-prints fodder.
+// Fill Pretty-prints fodder.
 // The crowded and separateToken params control whether single whitespace
 // characters are added to keep tokens from joining together in the output.
 // The intuition of crowded is that the caller passes true for crowded if the
@@ -50,7 +50,7 @@ func (u *unparser) write(str string) {
 // creates a crowded situation where there was not one before).
 // If crowded is false and separateToken is false then no space is printed
 // after or before the fodder, even if the last fodder was an interstitial.
-func (u *unparser) fill(fodder ast.Fodder, crowded bool, separateToken bool) {
+func (u *Unparser) Fill(fodder ast.Fodder, crowded bool, separateToken bool) {
 	var lastIndent int
 	for _, fod := range fodder {
 		switch fod.Kind {
@@ -61,490 +61,490 @@ func (u *unparser) fill(fodder ast.Fodder, crowded bool, separateToken bool) {
 					// First line is already indented by previous fod.
 					if i > 0 {
 						for i := 0; i < lastIndent; i++ {
-							u.write(" ")
+							u.Write(" ")
 						}
 					}
-					u.write(l)
+					u.Write(l)
 				}
-				u.write("\n")
+				u.Write("\n")
 			}
 			for i := 0; i < fod.Blanks; i++ {
-				u.write("\n")
+				u.Write("\n")
 			}
 			for i := 0; i < fod.Indent; i++ {
-				u.write(" ")
+				u.Write(" ")
 			}
 			lastIndent = fod.Indent
 			crowded = false
 
 		case ast.FodderLineEnd:
 			if len(fod.Comment) > 0 {
-				u.write("  ")
-				u.write(fod.Comment[0])
+				u.Write("  ")
+				u.Write(fod.Comment[0])
 			}
 			for i := 0; i <= fod.Blanks; i++ {
-				u.write("\n")
+				u.Write("\n")
 			}
 			for i := 0; i < fod.Indent; i++ {
-				u.write(" ")
+				u.Write(" ")
 			}
 			lastIndent = fod.Indent
 			crowded = false
 
 		case ast.FodderInterstitial:
 			if crowded {
-				u.write(" ")
+				u.Write(" ")
 			}
-			u.write(fod.Comment[0])
+			u.Write(fod.Comment[0])
 			crowded = true
 		}
 	}
 	if separateToken && crowded {
-		u.write(" ")
+		u.Write(" ")
 	}
 }
 
-func (u *unparser) unparseSpecs(spec *ast.ForSpec) {
+func (u *Unparser) UnparseSpecs(spec *ast.ForSpec) {
 	if spec.Outer != nil {
-		u.unparseSpecs(spec.Outer)
+		u.UnparseSpecs(spec.Outer)
 	}
-	u.fill(spec.ForFodder, true, true)
-	u.write("for")
-	u.fill(spec.VarFodder, true, true)
-	u.write(string(spec.VarName))
-	u.fill(spec.InFodder, true, true)
-	u.write("in")
-	u.unparse(spec.Expr, true)
+	u.Fill(spec.ForFodder, true, true)
+	u.Write("for")
+	u.Fill(spec.VarFodder, true, true)
+	u.Write(string(spec.VarName))
+	u.Fill(spec.InFodder, true, true)
+	u.Write("in")
+	u.Unparse(spec.Expr, true)
 	for _, cond := range spec.Conditions {
-		u.fill(cond.IfFodder, true, true)
-		u.write("if")
-		u.unparse(cond.Expr, true)
+		u.Fill(cond.IfFodder, true, true)
+		u.Write("if")
+		u.Unparse(cond.Expr, true)
 	}
 }
 
-func (u *unparser) unparseParams(fodderL ast.Fodder, params []ast.Parameter, trailingComma bool, fodderR ast.Fodder) {
-	u.fill(fodderL, false, false)
-	u.write("(")
+func (u *Unparser) UnparseParams(fodderL ast.Fodder, params []ast.Parameter, trailingComma bool, fodderR ast.Fodder) {
+	u.Fill(fodderL, false, false)
+	u.Write("(")
 	first := true
 	for _, param := range params {
 		if !first {
-			u.write(",")
+			u.Write(",")
 		}
-		u.fill(param.NameFodder, !first, true)
-		u.unparseID(param.Name)
+		u.Fill(param.NameFodder, !first, true)
+		u.UnparseID(param.Name)
 		if param.DefaultArg != nil {
-			u.fill(param.EqFodder, false, false)
-			u.write("=")
-			u.unparse(param.DefaultArg, false)
+			u.Fill(param.EqFodder, false, false)
+			u.Write("=")
+			u.Unparse(param.DefaultArg, false)
 		}
-		u.fill(param.CommaFodder, false, false)
+		u.Fill(param.CommaFodder, false, false)
 		first = false
 	}
 	if trailingComma {
-		u.write(",")
+		u.Write(",")
 	}
-	u.fill(fodderR, false, false)
-	u.write(")")
+	u.Fill(fodderR, false, false)
+	u.Write(")")
 }
 
-func (u *unparser) unparseFieldParams(field ast.ObjectField) {
+func (u *Unparser) UnparseFieldParams(field ast.ObjectField) {
 	m := field.Method
 	if m != nil {
-		u.unparseParams(m.ParenLeftFodder, m.Parameters, m.TrailingComma,
+		u.UnparseParams(m.ParenLeftFodder, m.Parameters, m.TrailingComma,
 			m.ParenRightFodder)
 	}
 }
 
-func (u *unparser) unparseFields(fields ast.ObjectFields, crowded bool) {
+func (u *Unparser) UnparseFields(fields ast.ObjectFields, crowded bool) {
 	first := true
 	for _, field := range fields {
 		if !first {
-			u.write(",")
+			u.Write(",")
 		}
 
 		// An aux function so we don't repeat ourselves for the 3 kinds of
 		// basic field.
-		unparseFieldRemainder := func(field ast.ObjectField) {
-			u.unparseFieldParams(field)
-			u.fill(field.OpFodder, false, false)
+		UnparseFieldRemainder := func(field ast.ObjectField) {
+			u.UnparseFieldParams(field)
+			u.Fill(field.OpFodder, false, false)
 			if field.SuperSugar {
-				u.write("+")
+				u.Write("+")
 			}
 			switch field.Hide {
 			case ast.ObjectFieldInherit:
-				u.write(":")
+				u.Write(":")
 			case ast.ObjectFieldHidden:
-				u.write("::")
+				u.Write("::")
 			case ast.ObjectFieldVisible:
-				u.write(":::")
+				u.Write(":::")
 			}
-			u.unparse(field.Expr2, true)
+			u.Unparse(field.Expr2, true)
 		}
 
 		switch field.Kind {
 		case ast.ObjectLocal:
-			u.fill(field.Fodder1, !first || crowded, true)
-			u.write("local")
-			u.fill(field.Fodder2, true, true)
-			u.unparseID(*field.Id)
-			u.unparseFieldParams(field)
-			u.fill(field.OpFodder, true, true)
-			u.write("=")
-			u.unparse(field.Expr2, true)
+			u.Fill(field.Fodder1, !first || crowded, true)
+			u.Write("local")
+			u.Fill(field.Fodder2, true, true)
+			u.UnparseID(*field.Id)
+			u.UnparseFieldParams(field)
+			u.Fill(field.OpFodder, true, true)
+			u.Write("=")
+			u.Unparse(field.Expr2, true)
 
 		case ast.ObjectFieldID:
-			u.fill(field.Fodder1, !first || crowded, true)
-			u.unparseID(*field.Id)
-			unparseFieldRemainder(field)
+			u.Fill(field.Fodder1, !first || crowded, true)
+			u.UnparseID(*field.Id)
+			UnparseFieldRemainder(field)
 
 		case ast.ObjectFieldStr:
-			u.unparse(field.Expr1, !first || crowded)
-			unparseFieldRemainder(field)
+			u.Unparse(field.Expr1, !first || crowded)
+			UnparseFieldRemainder(field)
 
 		case ast.ObjectFieldExpr:
-			u.fill(field.Fodder1, !first || crowded, true)
-			u.write("[")
-			u.unparse(field.Expr1, false)
-			u.fill(field.Fodder2, false, false)
-			u.write("]")
-			unparseFieldRemainder(field)
+			u.Fill(field.Fodder1, !first || crowded, true)
+			u.Write("[")
+			u.Unparse(field.Expr1, false)
+			u.Fill(field.Fodder2, false, false)
+			u.Write("]")
+			UnparseFieldRemainder(field)
 
 		case ast.ObjectAssert:
-			u.fill(field.Fodder1, !first || crowded, true)
-			u.write("assert")
-			u.unparse(field.Expr2, true)
+			u.Fill(field.Fodder1, !first || crowded, true)
+			u.Write("assert")
+			u.Unparse(field.Expr2, true)
 			if field.Expr3 != nil {
-				u.fill(field.OpFodder, true, true)
-				u.write(":")
-				u.unparse(field.Expr3, true)
+				u.Fill(field.OpFodder, true, true)
+				u.Write(":")
+				u.Unparse(field.Expr3, true)
 			}
 		}
 
 		first = false
-		u.fill(field.CommaFodder, false, false)
+		u.Fill(field.CommaFodder, false, false)
 	}
 
 }
 
-func (u *unparser) unparseID(id ast.Identifier) {
-	u.write(string(id))
+func (u *Unparser) UnparseID(id ast.Identifier) {
+	u.Write(string(id))
 }
 
-func (u *unparser) unparse(expr ast.Node, crowded bool) {
+func (u *Unparser) Unparse(expr ast.Node, crowded bool) {
 
 	if leftRecursive(expr) == nil {
-		u.fill(*expr.OpenFodder(), crowded, true)
+		u.Fill(*expr.OpenFodder(), crowded, true)
 	}
 
 	switch node := expr.(type) {
 	case *ast.Apply:
-		u.unparse(node.Target, crowded)
-		u.fill(node.FodderLeft, false, false)
-		u.write("(")
+		u.Unparse(node.Target, crowded)
+		u.Fill(node.FodderLeft, false, false)
+		u.Write("(")
 		first := true
 		for _, arg := range node.Arguments.Positional {
 			if !first {
-				u.write(",")
+				u.Write(",")
 			}
 			space := !first
-			u.unparse(arg.Expr, space)
-			u.fill(arg.CommaFodder, false, false)
+			u.Unparse(arg.Expr, space)
+			u.Fill(arg.CommaFodder, false, false)
 			first = false
 		}
 		for _, arg := range node.Arguments.Named {
 			if !first {
-				u.write(",")
+				u.Write(",")
 			}
 			space := !first
-			u.fill(arg.NameFodder, space, true)
-			u.unparseID(arg.Name)
+			u.Fill(arg.NameFodder, space, true)
+			u.UnparseID(arg.Name)
 			space = false
-			u.write("=")
-			u.unparse(arg.Arg, space)
-			u.fill(arg.CommaFodder, false, false)
+			u.Write("=")
+			u.Unparse(arg.Arg, space)
+			u.Fill(arg.CommaFodder, false, false)
 			first = false
 		}
 		if node.TrailingComma {
-			u.write(",")
+			u.Write(",")
 		}
-		u.fill(node.FodderRight, false, false)
-		u.write(")")
+		u.Fill(node.FodderRight, false, false)
+		u.Write(")")
 		if node.TailStrict {
-			u.fill(node.TailStrictFodder, true, true)
-			u.write("tailstrict")
+			u.Fill(node.TailStrictFodder, true, true)
+			u.Write("tailstrict")
 		}
 
 	case *ast.ApplyBrace:
-		u.unparse(node.Left, crowded)
-		u.unparse(node.Right, true)
+		u.Unparse(node.Left, crowded)
+		u.Unparse(node.Right, true)
 
 	case *ast.Array:
-		u.write("[")
+		u.Write("[")
 		first := true
 		for _, element := range node.Elements {
 			if !first {
-				u.write(",")
+				u.Write(",")
 			}
-			u.unparse(element.Expr, !first || u.options.PadArrays)
-			u.fill(element.CommaFodder, false, false)
+			u.Unparse(element.Expr, !first || u.options.PadArrays)
+			u.Fill(element.CommaFodder, false, false)
 			first = false
 		}
 		if node.TrailingComma {
-			u.write(",")
+			u.Write(",")
 		}
-		u.fill(node.CloseFodder, len(node.Elements) > 0, u.options.PadArrays)
-		u.write("]")
+		u.Fill(node.CloseFodder, len(node.Elements) > 0, u.options.PadArrays)
+		u.Write("]")
 
 	case *ast.ArrayComp:
-		u.write("[")
-		u.unparse(node.Body, u.options.PadArrays)
-		u.fill(node.TrailingCommaFodder, false, false)
+		u.Write("[")
+		u.Unparse(node.Body, u.options.PadArrays)
+		u.Fill(node.TrailingCommaFodder, false, false)
 		if node.TrailingComma {
-			u.write(",")
+			u.Write(",")
 		}
-		u.unparseSpecs(&node.Spec)
-		u.fill(node.CloseFodder, true, u.options.PadArrays)
-		u.write("]")
+		u.UnparseSpecs(&node.Spec)
+		u.Fill(node.CloseFodder, true, u.options.PadArrays)
+		u.Write("]")
 
 	case *ast.Assert:
-		u.write("assert")
-		u.unparse(node.Cond, true)
+		u.Write("assert")
+		u.Unparse(node.Cond, true)
 		if node.Message != nil {
-			u.fill(node.ColonFodder, true, true)
-			u.write(":")
-			u.unparse(node.Message, true)
+			u.Fill(node.ColonFodder, true, true)
+			u.Write(":")
+			u.Unparse(node.Message, true)
 		}
-		u.fill(node.SemicolonFodder, false, false)
-		u.write(";")
-		u.unparse(node.Rest, true)
+		u.Fill(node.SemicolonFodder, false, false)
+		u.Write(";")
+		u.Unparse(node.Rest, true)
 
 	case *ast.Binary:
-		u.unparse(node.Left, crowded)
-		u.fill(node.OpFodder, true, true)
-		u.write(node.Op.String())
-		u.unparse(node.Right, true)
+		u.Unparse(node.Left, crowded)
+		u.Fill(node.OpFodder, true, true)
+		u.Write(node.Op.String())
+		u.Unparse(node.Right, true)
 
 	case *ast.Conditional:
-		u.write("if")
-		u.unparse(node.Cond, true)
-		u.fill(node.ThenFodder, true, true)
-		u.write("then")
-		u.unparse(node.BranchTrue, true)
+		u.Write("if")
+		u.Unparse(node.Cond, true)
+		u.Fill(node.ThenFodder, true, true)
+		u.Write("then")
+		u.Unparse(node.BranchTrue, true)
 		if node.BranchFalse != nil {
-			u.fill(node.ElseFodder, true, true)
-			u.write("else")
-			u.unparse(node.BranchFalse, true)
+			u.Fill(node.ElseFodder, true, true)
+			u.Write("else")
+			u.Unparse(node.BranchFalse, true)
 		}
 
 	case *ast.Dollar:
-		u.write("$")
+		u.Write("$")
 
 	case *ast.Error:
-		u.write("error")
-		u.unparse(node.Expr, true)
+		u.Write("error")
+		u.Unparse(node.Expr, true)
 
 	case *ast.Function:
-		u.write("function")
-		u.unparseParams(node.ParenLeftFodder, node.Parameters, node.TrailingComma, node.ParenRightFodder)
-		u.unparse(node.Body, true)
+		u.Write("function")
+		u.UnparseParams(node.ParenLeftFodder, node.Parameters, node.TrailingComma, node.ParenRightFodder)
+		u.Unparse(node.Body, true)
 
 	case *ast.Import:
-		u.write("import")
-		u.unparse(node.File, true)
+		u.Write("import")
+		u.Unparse(node.File, true)
 
 	case *ast.ImportStr:
-		u.write("importstr")
-		u.unparse(node.File, true)
+		u.Write("importstr")
+		u.Unparse(node.File, true)
 
 	case *ast.Index:
-		u.unparse(node.Target, crowded)
-		u.fill(node.LeftBracketFodder, false, false) // Can also be DotFodder
+		u.Unparse(node.Target, crowded)
+		u.Fill(node.LeftBracketFodder, false, false) // Can also be DotFodder
 		if node.Id != nil {
-			u.write(".")
-			u.fill(node.RightBracketFodder, false, false) // IdFodder
-			u.unparseID(*node.Id)
+			u.Write(".")
+			u.Fill(node.RightBracketFodder, false, false) // IdFodder
+			u.UnparseID(*node.Id)
 		} else {
-			u.write("[")
-			u.unparse(node.Index, false)
-			u.fill(node.RightBracketFodder, false, false)
-			u.write("]")
+			u.Write("[")
+			u.Unparse(node.Index, false)
+			u.Fill(node.RightBracketFodder, false, false)
+			u.Write("]")
 		}
 
 	case *ast.Slice:
-		u.unparse(node.Target, crowded)
-		u.fill(node.LeftBracketFodder, false, false)
-		u.write("[")
+		u.Unparse(node.Target, crowded)
+		u.Fill(node.LeftBracketFodder, false, false)
+		u.Write("[")
 		if node.BeginIndex != nil {
-			u.unparse(node.BeginIndex, false)
+			u.Unparse(node.BeginIndex, false)
 		}
-		u.fill(node.EndColonFodder, false, false)
-		u.write(":")
+		u.Fill(node.EndColonFodder, false, false)
+		u.Write(":")
 		if node.EndIndex != nil {
-			u.unparse(node.EndIndex, false)
+			u.Unparse(node.EndIndex, false)
 		}
 		if node.Step != nil || len(node.StepColonFodder) > 0 {
-			u.fill(node.StepColonFodder, false, false)
-			u.write(":")
+			u.Fill(node.StepColonFodder, false, false)
+			u.Write(":")
 			if node.Step != nil {
-				u.unparse(node.Step, false)
+				u.Unparse(node.Step, false)
 			}
 		}
-		u.fill(node.RightBracketFodder, false, false)
-		u.write("]")
+		u.Fill(node.RightBracketFodder, false, false)
+		u.Write("]")
 
 	case *ast.InSuper:
-		u.unparse(node.Index, true)
-		u.fill(node.InFodder, true, true)
-		u.write("in")
-		u.fill(node.SuperFodder, true, true)
-		u.write("super")
+		u.Unparse(node.Index, true)
+		u.Fill(node.InFodder, true, true)
+		u.Write("in")
+		u.Fill(node.SuperFodder, true, true)
+		u.Write("super")
 
 	case *ast.Local:
-		u.write("local")
+		u.Write("local")
 		if len(node.Binds) == 0 {
 			panic("INTERNAL ERROR: local with no binds")
 		}
 		first := true
 		for _, bind := range node.Binds {
 			if !first {
-				u.write(",")
+				u.Write(",")
 			}
 			first = false
-			u.fill(bind.VarFodder, true, true)
-			u.unparseID(bind.Variable)
+			u.Fill(bind.VarFodder, true, true)
+			u.UnparseID(bind.Variable)
 			if bind.Fun != nil {
-				u.unparseParams(bind.Fun.ParenLeftFodder,
+				u.UnparseParams(bind.Fun.ParenLeftFodder,
 					bind.Fun.Parameters,
 					bind.Fun.TrailingComma,
 					bind.Fun.ParenRightFodder)
 			}
-			u.fill(bind.EqFodder, true, true)
-			u.write("=")
-			u.unparse(bind.Body, true)
-			u.fill(bind.CloseFodder, false, false)
+			u.Fill(bind.EqFodder, true, true)
+			u.Write("=")
+			u.Unparse(bind.Body, true)
+			u.Fill(bind.CloseFodder, false, false)
 		}
-		u.write(";")
-		u.unparse(node.Body, true)
+		u.Write(";")
+		u.Unparse(node.Body, true)
 
 	case *ast.LiteralBoolean:
 		if node.Value {
-			u.write("true")
+			u.Write("true")
 		} else {
-			u.write("false")
+			u.Write("false")
 		}
 
 	case *ast.LiteralNumber:
-		u.write(node.OriginalString)
+		u.Write(node.OriginalString)
 
 	case *ast.LiteralString:
 		switch node.Kind {
 		case ast.StringDouble:
-			u.write("\"")
+			u.Write("\"")
 			// The original escape codes are still in the string.
-			u.write(node.Value)
-			u.write("\"")
+			u.Write(node.Value)
+			u.Write("\"")
 		case ast.StringSingle:
-			u.write("'")
+			u.Write("'")
 			// The original escape codes are still in the string.
-			u.write(node.Value)
-			u.write("'")
+			u.Write(node.Value)
+			u.Write("'")
 		case ast.StringBlock:
-			u.write("|||\n")
+			u.Write("|||\n")
 			if node.Value[0] != '\n' {
-				u.write(node.BlockIndent)
+				u.Write(node.BlockIndent)
 			}
 			for i, r := range node.Value {
 				// Formatter always outputs in unix mode.
 				if r == '\r' {
 					continue
 				}
-				u.write(string(r))
+				u.Write(string(r))
 				if r == '\n' && (i+1 < len(node.Value)) && node.Value[i+1] != '\n' {
-					u.write(node.BlockIndent)
+					u.Write(node.BlockIndent)
 				}
 			}
-			u.write(node.BlockTermIndent)
-			u.write("|||")
+			u.Write(node.BlockTermIndent)
+			u.Write("|||")
 		case ast.VerbatimStringDouble:
-			u.write("@\"")
+			u.Write("@\"")
 			// Escapes were processed by the parser, so put them back in.
 			for _, r := range node.Value {
 				if r == '"' {
-					u.write("\"\"")
+					u.Write("\"\"")
 				} else {
-					u.write(string(r))
+					u.Write(string(r))
 				}
 			}
-			u.write("\"")
+			u.Write("\"")
 		case ast.VerbatimStringSingle:
-			u.write("@'")
+			u.Write("@'")
 			// Escapes were processed by the parser, so put them back in.
 			for _, r := range node.Value {
 				if r == '\'' {
-					u.write("''")
+					u.Write("''")
 				} else {
-					u.write(string(r))
+					u.Write(string(r))
 				}
 			}
-			u.write("'")
+			u.Write("'")
 		}
 
 	case *ast.LiteralNull:
-		u.write("null")
+		u.Write("null")
 
 	case *ast.Object:
-		u.write("{")
-		u.unparseFields(node.Fields, u.options.PadObjects)
+		u.Write("{")
+		u.UnparseFields(node.Fields, u.options.PadObjects)
 		if node.TrailingComma {
-			u.write(",")
+			u.Write(",")
 		}
-		u.fill(node.CloseFodder, len(node.Fields) > 0, u.options.PadObjects)
-		u.write("}")
+		u.Fill(node.CloseFodder, len(node.Fields) > 0, u.options.PadObjects)
+		u.Write("}")
 
 	case *ast.ObjectComp:
-		u.write("{")
-		u.unparseFields(node.Fields, u.options.PadObjects)
+		u.Write("{")
+		u.UnparseFields(node.Fields, u.options.PadObjects)
 		if node.TrailingComma {
-			u.write(",")
+			u.Write(",")
 		}
-		u.unparseSpecs(&node.Spec)
-		u.fill(node.CloseFodder, true, u.options.PadObjects)
-		u.write("}")
+		u.UnparseSpecs(&node.Spec)
+		u.Fill(node.CloseFodder, true, u.options.PadObjects)
+		u.Write("}")
 
 	case *ast.Parens:
-		u.write("(")
-		u.unparse(node.Inner, false)
-		u.fill(node.CloseFodder, false, false)
-		u.write(")")
+		u.Write("(")
+		u.Unparse(node.Inner, false)
+		u.Fill(node.CloseFodder, false, false)
+		u.Write(")")
 
 	case *ast.Self:
-		u.write("self")
+		u.Write("self")
 
 	case *ast.SuperIndex:
-		u.write("super")
-		u.fill(node.DotFodder, false, false)
+		u.Write("super")
+		u.Fill(node.DotFodder, false, false)
 		if node.Id != nil {
-			u.write(".")
-			u.fill(node.IDFodder, false, false)
-			u.unparseID(*node.Id)
+			u.Write(".")
+			u.Fill(node.IDFodder, false, false)
+			u.UnparseID(*node.Id)
 		} else {
-			u.write("[")
-			u.unparse(node.Index, false)
-			u.fill(node.IDFodder, false, false)
-			u.write("]")
+			u.Write("[")
+			u.Unparse(node.Index, false)
+			u.Fill(node.IDFodder, false, false)
+			u.Write("]")
 		}
 	case *ast.Var:
-		u.unparseID(node.Id)
+		u.UnparseID(node.Id)
 
 	case *ast.Unary:
-		u.write(node.Op.String())
-		u.unparse(node.Expr, false)
+		u.Write(node.Op.String())
+		u.Unparse(node.Expr, false)
 
 	default:
 		panic(fmt.Sprintf("INTERNAL ERROR: Unknown AST: %T", expr))
 	}
 }
 
-func (u *unparser) string() string {
+func (u *Unparser) String() string {
 	return u.buf.String()
 }

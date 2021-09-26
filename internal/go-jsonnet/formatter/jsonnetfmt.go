@@ -129,7 +129,7 @@ func removeInitialNewlines(node ast.Node) {
 	}
 }
 
-func visitFile(p pass.ASTPass, node *ast.Node, finalFodder *ast.Fodder) {
+func VisitFile(p pass.ASTPass, node *ast.Node, finalFodder *ast.Fodder) {
 	p.File(p, node, finalFodder)
 }
 
@@ -147,39 +147,39 @@ func Format(filename string, input string, options Options) (string, error) {
 	}
 	removeInitialNewlines(node)
 	if options.MaxBlankLines > 0 {
-		visitFile(&EnforceMaxBlankLines{Options: options}, &node, &finalFodder)
+		VisitFile(&EnforceMaxBlankLines{Options: options}, &node, &finalFodder)
 	}
-	visitFile(&FixNewlines{}, &node, &finalFodder)
-	visitFile(&FixTrailingCommas{}, &node, &finalFodder)
-	visitFile(&FixParens{}, &node, &finalFodder)
-	visitFile(&FixPlusObject{}, &node, &finalFodder)
-	visitFile(&NoRedundantSliceColon{}, &node, &finalFodder)
+	VisitFile(&FixNewlines{}, &node, &finalFodder)
+	VisitFile(&FixTrailingCommas{}, &node, &finalFodder)
+	VisitFile(&FixParens{}, &node, &finalFodder)
+	VisitFile(&FixPlusObject{}, &node, &finalFodder)
+	VisitFile(&NoRedundantSliceColon{}, &node, &finalFodder)
 	if options.StripComments {
-		visitFile(&StripComments{}, &node, &finalFodder)
+		VisitFile(&StripComments{}, &node, &finalFodder)
 	} else if options.StripAllButComments {
-		visitFile(&StripAllButComments{}, &node, &finalFodder)
+		VisitFile(&StripAllButComments{}, &node, &finalFodder)
 	} else if options.StripEverything {
-		visitFile(&StripEverything{}, &node, &finalFodder)
+		VisitFile(&StripEverything{}, &node, &finalFodder)
 	}
 	if options.PrettyFieldNames {
-		visitFile(&PrettyFieldNames{}, &node, &finalFodder)
+		VisitFile(&PrettyFieldNames{}, &node, &finalFodder)
 	}
 	if options.StringStyle != StringStyleLeave {
-		visitFile(&EnforceStringStyle{Options: options}, &node, &finalFodder)
+		VisitFile(&EnforceStringStyle{Options: options}, &node, &finalFodder)
 	}
 	if options.CommentStyle != CommentStyleLeave {
-		visitFile(&EnforceCommentStyle{Options: options}, &node, &finalFodder)
+		VisitFile(&EnforceCommentStyle{Options: options}, &node, &finalFodder)
 	}
 	if options.Indent > 0 {
 		visitor := FixIndentation{Options: options}
 		visitor.VisitFile(node, finalFodder)
 	}
 
-	u := &unparser{options: options}
-	u.unparse(node, false)
-	u.fill(finalFodder, true, false)
+	u := &Unparser{options: options}
+	u.Unparse(node, false)
+	u.Fill(finalFodder, true, false)
 	// Final whitespace is stripped at lexing time.  Add a single new line
 	// as files ought to end with a new line.
-	u.write("\n")
-	return u.string(), nil
+	u.Write("\n")
+	return u.String(), nil
 }
