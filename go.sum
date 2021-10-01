@@ -8,6 +8,8 @@ github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001063144-912f42428756 h1:DgP8QNga
 github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001063144-912f42428756/go.mod h1:C3fTzyVJDslXdiTqw/bTFk7vSGyCtH3MGRbDfvEwGd0=
 github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001074657-6bbe30b4c84a h1:ABxwj1WyHro6OetSHVuxVkjPv9D+RDZCJ4tmQwryhc0=
 github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001074657-6bbe30b4c84a/go.mod h1:C3fTzyVJDslXdiTqw/bTFk7vSGyCtH3MGRbDfvEwGd0=
+github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001104732-d0afe84ae4a2 h1:K59/7xH1ejy4r6mCWxcouBdDYs4igONqweJ0xL/CASQ=
+github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001104732-d0afe84ae4a2/go.mod h1:C3fTzyVJDslXdiTqw/bTFk7vSGyCtH3MGRbDfvEwGd0=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=

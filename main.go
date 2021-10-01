@@ -216,7 +216,7 @@ func (r *repl) eval(input string) (string, error) {
 		}
 		builder.WriteString(input)
 		if r.namespaceFile[r.ns] != "" {
-			err := os.WriteFile(r.namespaceFile[r.ns], []byte(builder.String()), 0644)
+			err := ioutil.WriteFile(r.namespaceFile[r.ns], []byte(builder.String()), 0644)
 			if err != nil {
 				return "", fmt.Errorf("unable to write namespace to file %s: %w", r.namespaceFile, err)
 			}
@@ -226,7 +226,7 @@ func (r *repl) eval(input string) (string, error) {
 			return "", err
 		}
 		if r.evalFile[r.ns] != "" {
-			err := os.WriteFile(r.evalFile[r.ns], []byte(result), 0644)
+			err := ioutil.WriteFile(r.evalFile[r.ns], []byte(result), 0644)
 			if err != nil {
 				return "", fmt.Errorf("unable to write evaluation to file %s: %w", r.evalFile, err)
 			}

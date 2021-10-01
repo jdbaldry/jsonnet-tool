@@ -1,4 +1,4 @@
-# github.com/google/go-jsonnet v0.17.0 => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001074657-6bbe30b4c84a
+# github.com/google/go-jsonnet v0.17.0 => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001104732-d0afe84ae4a2
 ## explicit
 github.com/google/go-jsonnet
 github.com/google/go-jsonnet/ast
@@ -13,4 +13,4 @@ github.com/google/go-jsonnet/toolutils
 gopkg.in/yaml.v2
 # sigs.k8s.io/yaml v1.1.0
 sigs.k8s.io/yaml
-# github.com/google/go-jsonnet => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001074657-6bbe30b4c84a
+# github.com/google/go-jsonnet => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211001104732-d0afe84ae4a2

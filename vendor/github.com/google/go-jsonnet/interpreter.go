@@ -308,6 +308,9 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		}
 		return node, err
 
+	case *ast.ApplyBrace:
+		return node, err
+
 	case *ast.Array:
 		return node, err
 
@@ -328,6 +331,9 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 	case *ast.DesugaredObject:
 		return node, err
 
+	case *ast.Dollar:
+		return node, err
+
 	case *ast.Error:
 		return node, err
 
@@ -341,11 +347,8 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return &ast.Parens{Inner: node}, err
 
 	case *ast.Index:
-		node.Target, err = i.expand(node.Target, tc)
-		if err != nil {
-			return node, err
-		}
-		// TODO: expand index expression.
+		// TODO: expand index node.
+		// Currently this is complicated because of 'std'.
 		return node, err
 
 	case *ast.InSuper:
@@ -376,8 +379,8 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 			// recursive locals
 			vars[bind.Variable] = &th
 			bindEnv.upValues[bind.Variable] = &th
+			i.stack.newLocal(vars)
 		}
-		i.stack.newLocal(vars)
 		sz := len(i.stack.stack)
 		// Add new stack frame, with new thunk for this variable
 		// execute body WRT stack frame.
@@ -443,7 +446,7 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return foo.body, err
 
 	default:
-		panic(fmt.Sprintf("Executing this AST type not implemented: %v", reflect.TypeOf(a)))
+		panic(fmt.Sprintf("Expanding this AST type not implemented: %v", reflect.TypeOf(a)))
 	}
 }
 
@@ -1552,12 +1555,10 @@ func evaluateStream(node ast.Node, ext vmExtMap, tla vmExtMap, nativeFuncs map[s
 }
 
 func expand(i *interpreter, node ast.Node, finalFodder ast.Fodder) (string, error) {
-	evalLoc := ast.MakeLocationRangeMessage("During expansion")
-	evalTrace := traceElement{
-		loc: &evalLoc,
-	}
+	loc := ast.MakeLocationRangeMessage("During expansion")
 	env := makeInitialEnv(node.Loc().FileName, i.baseStd)
-	i.stack.setCurrentTrace(evalTrace)
+
+	i.stack.setCurrentTrace(traceElement{loc: &loc})
 	node, err := i.expandInCleanEnv(&env, node, false)
 	i.stack.clearCurrentTrace()
 	if err != nil {
