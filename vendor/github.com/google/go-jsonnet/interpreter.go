@@ -298,52 +298,70 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 	i.stack.setCurrentTrace(trace)
 	defer func() { i.stack.clearCurrentTrace(); i.stack.setCurrentTrace(oldTrace) }()
 
+	var err error
 	switch node := a.(type) {
 
 	case *ast.Apply:
-		return node, nil
+		node.Target, err = i.expand(node.Target, tc)
+		if err != nil {
+			return node, err
+		}
+		return node, err
 
 	case *ast.Array:
-		return node, nil
+		return node, err
 
 	case *ast.Binary:
-		return node, nil
+		node.Left, err = i.expand(node.Left, tc)
+		if err != nil {
+			return node, err
+		}
+		node.Right, err = i.expand(node.Right, tc)
+		if err != nil {
+			return node, err
+		}
+		return node, err
 
 	case *ast.Conditional:
-		return node, nil
+		return node, err
 
 	case *ast.DesugaredObject:
-		return node, nil
+		return node, err
 
 	case *ast.Error:
-		return node, nil
+		return node, err
 
 	case *ast.Function:
-		return node, nil
+		return node, err
 
 	case *ast.Import:
-		return &ast.Parens{Inner: node}, nil
+		return &ast.Parens{Inner: node}, err
 
 	case *ast.ImportStr:
-		return &ast.Parens{Inner: node}, nil
+		return &ast.Parens{Inner: node}, err
 
 	case *ast.Index:
-		return node, nil
+		node.Target, err = i.expand(node.Target, tc)
+		if err != nil {
+			return node, err
+		}
+		// TODO: expand index expression.
+		return node, err
 
 	case *ast.InSuper:
-		return node, nil
+		return node, err
 
 	case *ast.LiteralBoolean:
-		return node, nil
+		return node, err
 
 	case *ast.LiteralNull:
-		return node, nil
+		return node, err
 
 	case *ast.LiteralNumber:
-		return node, nil
+		return node, err
 
 	case *ast.LiteralString:
-		return node, nil
+		return node, err
 
 	case *ast.Local:
 		vars := make(bindingFrame)
@@ -406,23 +424,23 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		}
 		node.Fields = fields
 		i.stack.popIfExists(sz)
-		return node, nil
+		return node, err
 
 	case *ast.Parens:
-		return node, nil
+		return node, err
 
 	case *ast.Self:
-		return node, nil
+		return node, err
 
 	case *ast.SuperIndex:
-		return node, nil
+		return node, err
 
 	case *ast.Unary:
-		return node, nil
+		return node, err
 
 	case *ast.Var:
 		foo := i.stack.lookUpVarOrPanic(node.Id)
-		return foo.body, nil
+		return foo.body, err
 
 	default:
 		panic(fmt.Sprintf("Executing this AST type not implemented: %v", reflect.TypeOf(a)))

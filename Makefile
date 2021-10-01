@@ -13,3 +13,14 @@ help:
 
 jsonnet-tool: ## Build the jsonnet-tool
 	go build .
+
+GO_JSONNET_CHECKOUT_DIR := /home/jdb/google/go-jsonnet
+dev: ## Set up development environment.
+dev:
+	go mod edit -replace github.com/google/go-jsonnet=$(GO_JSONNET_CHECKOUT_DIR)
+	go mod vendor
+
+release: ## Set up release environment.
+release:
+	go mod edit -replace github.com/google/go-jsonnet=github.com/jdbaldry/go-jsonnet@master
+	go mod vendor
