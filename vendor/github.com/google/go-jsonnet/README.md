@@ -11,7 +11,7 @@
 
 This an implementation of [Jsonnet](http://jsonnet.org/) in pure Go. It is a feature complete, production-ready implementation. It is compatible with the original [Jsonnet C++ implementation](https://github.com/google/jsonnet). Bindings to C and Python are available (but not battle-tested yet).
 
-This code is known to work on Go 1.11 and above. We recommend always using the newest stable release of Go.
+This code is known to work on Go 1.12 and above. We recommend always using the newest stable release of Go.
 
 ## Installation instructions
 
@@ -25,7 +25,60 @@ It's also available on Homebrew:
 brew install go-jsonnet
 ```
 
-## Build instructions (go 1.11+)
+`jsonnetfmt` and `jsonnet-lint` are also available as [pre-commit](https://github.com/pre-commit/pre-commit) hooks. Example `.pre-commit-config.yaml`:
+```yaml
+- repo: https://github.com/google/go-jsonnet
+  rev: # ref you want to point at, e.g. v0.17.0
+  hooks:
+    - id: jsonnet-format
+    - id: jsonnet-lint
+```
+
+It can also be embedded in your own Go programs as a library:
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/google/go-jsonnet"
+)
+
+func main() {
+	vm := jsonnet.MakeVM()
+
+	snippet := `{
+		person1: {
+		    name: "Alice",
+		    welcome: "Hello " + self.name + "!",
+		},
+		person2: self.person1 { name: "Bob" },
+	}`
+
+	jsonStr, err := vm.EvaluateAnonymousSnippet("example1.jsonnet", snippet)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(jsonStr)
+	/*
+	   {
+	     "person1": {
+	         "name": "Alice",
+	         "welcome": "Hello Alice!"
+	     },
+	     "person2": {
+	         "name": "Bob",
+	         "welcome": "Hello Bob!"
+	     }
+	   }
+	*/
+}
+```
+
+## Build instructions (go 1.12+)
 
 ```bash
 git clone git@github.com:google/go-jsonnet.git
@@ -58,6 +111,18 @@ Windows         | _bazel build --platforms=@io_bazel_rules_go//go/toolchain:wind
 For additional target platform names, see the per-Go release definitions [here](https://github.com/bazelbuild/rules_go/blob/master/go/private/sdk_list.bzl#L21-L31) in the _rules_go_ Bazel package.
 
 Additionally if any files were moved around, see the section [Keeping the Bazel files up to date](#keeping-the-bazel-files-up-to-date).
+
+## Building libjsonnet.wasm
+
+```bash
+GOOS=js GOARCH=wasm go build -o libjsonnet.wasm ./cmd/wasm 
+```
+
+Or if using bazel:
+
+```
+bazel build //cmd/wasm:libjsonnet.wasm
+```
 
 ## Running tests
 

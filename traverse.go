@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
+	"github.com/google/go-jsonnet/toolutils"
 )
 
 // nop performs no operation on the AST node.
@@ -17,7 +17,7 @@ func traverse(root ast.Node, pre, in, post func(node *ast.Node) error) error {
 		return fmt.Errorf("pre error: %w", err)
 	}
 
-	children := parser.Children(root)
+	children := toolutils.Children(root)
 
 	if len(children) == 0 {
 		if err := in(&root); err != nil {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
+	"github.com/google/go-jsonnet/toolutils"
 )
 
 // toString provides a reasonably concise string representation of the Jsonnet AST node.
@@ -49,7 +49,7 @@ func dot(root ast.Node) (string, error) {
 				}
 				return nil
 			default:
-				for _, child := range parser.Children(node) {
+				for _, child := range toolutils.Children(node) {
 					builder.WriteString(fmt.Sprintf("  \"%s\"->\"%s\"\n",
 						strings.ReplaceAll(toString(node, node.Loc()), `"`, `\"`),
 						strings.ReplaceAll(toString(child, child.Loc()), `"`, `\"`)),

@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
+	"github.com/google/go-jsonnet/toolutils"
 )
 
 // symbol is a referencable symbol in a Jsonnet file.
@@ -64,7 +64,7 @@ func findSymbols(node *ast.Node, context []string) (symbols []symbol, err error)
 					End:      bind.LocRange.End,
 				}})
 		}
-		for _, node := range parser.Children(i) {
+		for _, node := range toolutils.Children(i) {
 			additional, err := findSymbols(&node, context)
 			if err != nil {
 				return symbols, err
@@ -73,7 +73,7 @@ func findSymbols(node *ast.Node, context []string) (symbols []symbol, err error)
 		}
 
 	default:
-		for _, node := range parser.Children(i) {
+		for _, node := range toolutils.Children(i) {
 			additional, err := findSymbols(&node, context)
 			if err != nil {
 				return symbols, err

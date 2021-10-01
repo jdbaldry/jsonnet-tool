@@ -15,8 +15,7 @@ import (
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
-	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/formatter"
-	"github.com/jdbaldry/jsonnet-tool/internal/go-jsonnet/parser"
+	"github.com/google/go-jsonnet/toolutils"
 )
 
 var (
@@ -289,15 +288,16 @@ func main() {
 		os.Exit(0)
 
 	case "dot":
-		// TODO: dot should traverse the raw AST and not the desugared AST.
-		// Perhaps there is a use in doing both?
 		if len(args) != 1 {
 			help(os.Stderr)
 			os.Exit(1)
 		}
 		file, _ := uncons(args)
-		vm := makeVM()
-		root, _, err := vm.ImportAST("", file)
+		body, err := ioutil.ReadFile(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to read file %s: %v\n", file, err)
+		}
+		root, _, err := toolutils.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(body))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to produce AST for file %s: %v\n", file, err)
 			os.Exit(1)
@@ -336,20 +336,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		root, finalFodder, err := parser.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
+		root, finalFodder, err := toolutils.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing AST for file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		capturer := formatter.NewCapturer()
-		formatter.VisitFile(capturer, &root, &finalFodder)
-		expander := formatter.NewExpanderFromCapturer(capturer)
-		formatter.VisitFile(expander, &root, &finalFodder)
-		u := &formatter.Unparser{}
-		u.Unparse(root, false)
-		u.Fill(finalFodder, true, false)
-		u.Write("\n")
-		fmt.Print(u.String())
+		output, err := makeVM().Expand(root, finalFodder)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error expanding file %s: %v\n", file, err)
+			os.Exit(1)
+		}
+		fmt.Print(output)
 
 	case "imports":
 		if len(args) != 1 {
