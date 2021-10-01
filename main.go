@@ -33,16 +33,22 @@ func help(w io.Writer) {
 
 Produce a .dot diagram of the Jsonnet AST for <file>:
   $ %s dot <file>
+
 Evaluate Jsonnet using the jsonnet-tool interpreter:
   $ %s eval <file>
+
 Produce an expanded Jsonnet representation:
   $ %s expand <file>
+
 Produce a JSON array of the layers of object evaluations for <file>:
   $ %s layers <file>
+
 List the imports for <file>:
   $ %s imports <file>
+
 List the referenceable symbols in <file>:
   $ %s symbols <file>
+
 Run a Jsonnet REPL:
   $ %s repl
 `, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
