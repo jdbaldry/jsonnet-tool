@@ -22,5 +22,5 @@ dev:
 
 release: ## Set up release environment.
 release:
-	go mod edit -replace github.com/google/go-jsonnet=github.com/jdbaldry/go-jsonnet@master
+	go mod edit -replace github.com/google/go-jsonnet=github.com/jdbaldry/go-jsonnet@e6432fd78d042d920294e5bc88746044ad903061
 	go mod vendor

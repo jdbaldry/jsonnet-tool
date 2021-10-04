@@ -4,4 +4,4 @@ go 1.16
 
 require github.com/google/go-jsonnet v0.17.0
 
-replace github.com/google/go-jsonnet => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211004072840-d882a4852de3
+replace github.com/google/go-jsonnet => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211004073746-e6432fd78d04

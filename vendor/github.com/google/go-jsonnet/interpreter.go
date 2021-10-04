@@ -349,28 +349,6 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return node, err
 
 	case *ast.Function:
-		var (
-			bindEnv    = i.stack.getCurrentEnv(a)
-			parameters = make([]ast.Parameter, len(node.Parameters))
-			vars       = make(bindingFrame)
-		)
-
-		for j, param := range node.Parameters {
-			param.DefaultArg, err = i.expand(param.DefaultArg, tc)
-			if err != nil {
-				return node, err
-			}
-			th := cachedThunk{env: &bindEnv, body: param.DefaultArg}
-			vars[param.Name] = &th
-			bindEnv.upValues[param.Name] = &th
-			parameters[j] = param
-		}
-		node.Parameters = parameters
-
-		i.stack.newLocal(vars)
-		sz := len(i.stack.stack)
-		node.Body, err = i.expand(node.Body, tc)
-		i.stack.popIfExists(sz)
 		return node, err
 
 	case *ast.Import:
