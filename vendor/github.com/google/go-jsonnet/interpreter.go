@@ -302,10 +302,21 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 	switch node := a.(type) {
 
 	case *ast.Apply:
-		node.Target, err = i.expand(node.Target, tc)
-		if err != nil {
-			return node, err
+		var (
+			arguments = ast.Arguments{
+				Positional: make([]ast.CommaSeparatedExpr, len(node.Arguments.Positional)),
+				Named:      make([]ast.NamedArgument, len(node.Arguments.Named)),
+			}
+		)
+		for j, arg := range node.Arguments.Positional {
+			arg.Expr, err = i.expand(arg.Expr, tc)
+			arguments.Positional[j] = arg
 		}
+		for j, arg := range node.Arguments.Named {
+			arg.Arg, err = i.expand(arg.Arg, tc)
+			arguments.Named[j] = arg
+		}
+		node.Arguments = arguments
 		return node, err
 
 	case *ast.ApplyBrace:
@@ -338,6 +349,28 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return node, err
 
 	case *ast.Function:
+		var (
+			bindEnv    = i.stack.getCurrentEnv(a)
+			parameters = make([]ast.Parameter, len(node.Parameters))
+			vars       = make(bindingFrame)
+		)
+
+		for j, param := range node.Parameters {
+			param.DefaultArg, err = i.expand(param.DefaultArg, tc)
+			if err != nil {
+				return node, err
+			}
+			th := cachedThunk{env: &bindEnv, body: param.DefaultArg}
+			vars[param.Name] = &th
+			bindEnv.upValues[param.Name] = &th
+			parameters[j] = param
+		}
+		node.Parameters = parameters
+
+		i.stack.newLocal(vars)
+		sz := len(i.stack.stack)
+		node.Body, err = i.expand(node.Body, tc)
+		i.stack.popIfExists(sz)
 		return node, err
 
 	case *ast.Import:
@@ -347,8 +380,6 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return &ast.Parens{Inner: node}, err
 
 	case *ast.Index:
-		// TODO: expand index node.
-		// Currently this is complicated because of 'std'.
 		return node, err
 
 	case *ast.InSuper:
@@ -381,18 +412,16 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 			bindEnv.upValues[bind.Variable] = &th
 			i.stack.newLocal(vars)
 		}
+
 		sz := len(i.stack.stack)
 		// Add new stack frame, with new thunk for this variable
 		// execute body WRT stack frame.
-		body, err := i.expand(node.Body, tc)
+		node.Body, err = i.expand(node.Body, tc)
 		i.stack.popIfExists(sz)
-		node.Body = body
-
 		return node, err
 
 	case *ast.Object:
 		var (
-			err     error
 			fields  = make([]ast.ObjectField, len(node.Fields))
 			vars    = make(bindingFrame)
 			bindEnv = i.stack.getCurrentEnv(a)
@@ -411,7 +440,6 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 				fields[j] = field
 			}
 		}
-
 		i.stack.newLocal(vars)
 		sz := len(i.stack.stack)
 		// Add new stack frame, with new thunk for this variable
@@ -430,6 +458,7 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return node, err
 
 	case *ast.Parens:
+		node.Inner, err = i.expand(node.Inner, tc)
 		return node, err
 
 	case *ast.Self:
@@ -442,8 +471,7 @@ func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
 		return node, err
 
 	case *ast.Var:
-		foo := i.stack.lookUpVarOrPanic(node.Id)
-		return foo.body, err
+		return i.stack.lookUpVarOrPanic(node.Id).body, err
 
 	default:
 		panic(fmt.Sprintf("Expanding this AST type not implemented: %v", reflect.TypeOf(a)))

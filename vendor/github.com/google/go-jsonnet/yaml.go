@@ -124,7 +124,7 @@ type LineReader struct {
 // An error is returned iff there is an error with the underlying reader.
 func (r *LineReader) Read() ([]byte, error) {
 	var (
-		isPrefix bool  = true
+		isPrefix       = true
 		err      error = nil
 		line     []byte
 		buffer   bytes.Buffer
