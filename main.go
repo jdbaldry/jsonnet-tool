@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
@@ -22,6 +24,36 @@ var (
 	command string
 	errExit = errors.New("exit")
 )
+
+// scanDoubleSemiColon is a split function for a Scanner that returns each string of text
+// separated by two semicolons ";;".
+func scanDoubleSemiColon(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	// Skip leading spaces.
+	start := 0
+	for width := 0; start < len(data); start += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[start:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+	}
+	// Scan until two semicolons are encountered.
+	var prev rune
+	for width, i := 0, start; i < len(data); i += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[i:])
+		if r == ';' && prev == ';' {
+			return i + 2*width, data[start : i-1], nil
+		}
+		prev = r
+	}
+	// If we're at EOF, we have a final, non-empty, non-terminated string of text.
+	if atEOF && len(data) > start {
+		return len(data), data[start:], nil
+	}
+	// Request more data.
+	return start, nil, nil
+}
 
 // help writes help text.
 // If no writer is provided, it writes to stderr.
@@ -79,9 +111,6 @@ func makeVM() *jsonnet.VM {
 	return vm
 }
 
-// locals are a slice of local variable binding expressions that are prepended to Jsonnet evaluations.
-type locals []string
-
 // repl can be used for interactive evaluation of Jsonnet.
 type repl struct {
 	// in is where the REPL reads input from.
@@ -92,8 +121,8 @@ type repl struct {
 	namespaceFile []string
 	// help is the REPL help text.
 	help string
-	// locals are a local variable expressions partitioned by namespace index.
-	locals []locals
+	// preExprs are a expressions partitioned by namespace index and prepended to evaluation.
+	preExprs [][]string
 	// ns is the index of the current namespace.
 	ns int
 	// vm performs the Jsonnet evaluations.
@@ -124,7 +153,7 @@ func (r *repl) eval(input string) (string, error) {
 		}
 		switch input[1] {
 		case 'd':
-			re := regexp.MustCompile(`^\\d\s+([0-9]+)$`)
+			re := regexp.MustCompile(`^(?s)\\d\s+([0-9]+)$`)
 			matches := re.FindStringSubmatch(input)
 			if len(matches) != 2 {
 				return "", fmt.Errorf("invalid delete command syntax. Wanted \\d INDEX")
@@ -133,13 +162,13 @@ func (r *repl) eval(input string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("invalid delete command index.")
 			}
-			if i < 0 || i > len(r.locals[r.ns])-1 {
+			if i < 0 || i > len(r.preExprs[r.ns])-1 {
 				return "", fmt.Errorf("delete command index out of range")
 			}
-			r.locals[r.ns] = append(r.locals[r.ns][:i], r.locals[r.ns][i+1:]...)
+			r.preExprs[r.ns] = append(r.preExprs[r.ns][:i], r.preExprs[r.ns][i+1:]...)
 			return "", nil
 		case 'f':
-			re := regexp.MustCompile(`^\\f\s+(.*)$`)
+			re := regexp.MustCompile(`^(?s)\\f\s+(.+)$`)
 			matches := re.FindStringSubmatch(input)
 			if len(matches) != 2 {
 				return "", fmt.Errorf("invalid file command syntax. Wanted \\f file")
@@ -152,34 +181,24 @@ func (r *repl) eval(input string) (string, error) {
 			return fmt.Sprintf("Writing evaluations to file %s\n", r.evalFile[r.ns]), nil
 		case 'h', '?':
 			return r.help, nil
-		case 'l':
-			if len(input) == 2 {
-				builder := strings.Builder{}
-				for i, s := range r.locals[r.ns] {
-					builder.WriteString(fmt.Sprintf("[%d] %s;\n", i, s))
-				}
-				return builder.String(), nil
-			}
-			r.locals[r.ns] = append(r.locals[r.ns], strings.Trim(strings.TrimPrefix(input, `\l`), " ;"))
-			return "", nil
 		case 'n':
 			if len(input) == 2 {
-				r.locals = append(r.locals, []string{})
+				r.preExprs = append(r.preExprs, []string{})
 				r.evalFile = append(r.evalFile, "")
 				r.namespaceFile = append(r.namespaceFile, "")
-				r.ns = len(r.locals) - 1
+				r.ns = len(r.preExprs) - 1
 				return fmt.Sprintf("Switched to namespace %d\n", r.ns), nil
 			}
-			re := regexp.MustCompile(`^\\n\s+([0-9]+)$`)
+			re := regexp.MustCompile(`^(?s)\\n\s+([0-9]+)$`)
 			matches := re.FindStringSubmatch(input)
 			if len(matches) != 2 {
-				return "", fmt.Errorf("invalid namespace command syntax. Wanted \\n INDEX")
+				return "", fmt.Errorf("invalid namespace command syntax. Wanted \\n or \\n INDEX")
 			}
 			i, err := strconv.Atoi(matches[1])
 			if err != nil {
 				return "", fmt.Errorf("invalid namespace command index.")
 			}
-			if i < 0 || i > len(r.locals)-1 {
+			if i < 0 || i > len(r.preExprs)-1 {
 				return "", fmt.Errorf("namespace command index out of range")
 			}
 			r.ns = i
@@ -193,9 +212,24 @@ func (r *repl) eval(input string) (string, error) {
 			}
 			return builder.String(), nil
 		case 'q':
-			return "bye!\n", errExit
+			return "", errExit
+		case 'v':
+			re := regexp.MustCompile(`(?s)^\\v\s*(.*)$`)
+			matches := re.FindStringSubmatch(input)
+			if len(matches) != 2 {
+				return "", fmt.Errorf("invalid variable expression command syntax. Wanted \\v or \\v EXPR.\n")
+			}
+			if len(matches[1]) > 0 {
+				r.preExprs[r.ns] = append(r.preExprs[r.ns], strings.Trim(strings.TrimPrefix(input, `\v`), " ;"))
+				return "", nil
+			}
+			builder := strings.Builder{}
+			for i, s := range r.preExprs[r.ns] {
+				builder.WriteString(fmt.Sprintf("[%d] %s\n", i, s))
+			}
+			return builder.String(), nil
 		case 'w':
-			re := regexp.MustCompile(`^\\w\s+(.*)$`)
+			re := regexp.MustCompile(`(?s)^\\w\s+(.+)$`)
 			matches := re.FindStringSubmatch(input)
 			if len(matches) != 2 {
 				return "", fmt.Errorf("invalid write command syntax. Wanted \\w file")
@@ -211,7 +245,7 @@ func (r *repl) eval(input string) (string, error) {
 		}
 	default:
 		builder := strings.Builder{}
-		for _, s := range r.locals[r.ns] {
+		for _, s := range r.preExprs[r.ns] {
 			builder.WriteString(fmt.Sprintf("%s;\n", s))
 		}
 		builder.WriteString(input)
@@ -237,26 +271,34 @@ func (r *repl) eval(input string) (string, error) {
 
 // newREPL produces a REPL.
 func newREPL(in io.Reader) repl {
+	scanner := bufio.NewScanner(in)
+	scanner.Split(scanDoubleSemiColon)
 	return repl{
-		in:            bufio.NewScanner(in),
+		in:            scanner,
 		evalFile:      make([]string, 1),
 		namespaceFile: make([]string, 1),
 		help: `A Jsonnet REPL.
+
+Commands and expressions should be terminated with two semicolons ';;'.
+For example,
+repl [0]> \v local bar = 'Hello, world!';;
+repl [0]> bar;;
+"Hello, world!"
 
 \d i            removes the ith namespace variable expression (zero indexed).
 \f FILE         writes subsequent evaluation of the current namespace to FILE.
 \n              creates a new namespace.
 \n i            switches to the ith namespace (zero indexed).
 \h              prints this help message.
-\l              prints the namespace variables.
-\l EXPR         creates a new namespace EXPR that is prepended to evaluation.
 \q              quits the REPL.
+\v              prints the namespace expressions.
+\v EXPR         creates a new namespace EXPR that is prepended to evaluation.
 \w FILE         writes the state of the current namespace to FILE.
 Anything else is evaluated as Jsonnet.
 `,
-		locals: make([]locals, 1),
-		ns:     0,
-		vm:     makeVM(),
+		preExprs: make([][]string, 1),
+		ns:       0,
+		vm:       makeVM(),
 	}
 }
 
@@ -416,9 +458,10 @@ func main() {
 			result, err := repl.eval(input)
 			if err != nil {
 				if err == errExit {
+					fmt.Println("Bye!")
 					os.Exit(0)
 				}
-				fmt.Fprintf(os.Stdout, "Evaluation error: %v\n", err)
+				fmt.Printf("Evaluation error: %v\n", err)
 			}
 
 			// print
