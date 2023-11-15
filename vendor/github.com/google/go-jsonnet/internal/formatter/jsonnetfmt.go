@@ -134,6 +134,12 @@ func removeInitialNewlines(node ast.Node) {
 	}
 }
 
+func removeExtraTrailingNewlines(finalFodder ast.Fodder) {
+	if len(finalFodder) > 0 {
+		finalFodder[len(finalFodder)-1].Blanks = 0
+	}
+}
+
 func visitFile(p pass.ASTPass, node *ast.Node, finalFodder *ast.Fodder) {
 	p.File(p, node, finalFodder)
 }
@@ -146,6 +152,12 @@ func Format(filename string, input string, options Options) (string, error) {
 		return "", err
 	}
 
+	return FormatNode(node, finalFodder, options)
+}
+
+// FormatNode returns code that is equivalent to its input but better formatted
+// according to the given options.
+func FormatNode(node ast.Node, finalFodder ast.Fodder, options Options) (string, error) {
 	// Passes to enforce style on the AST.
 	if options.SortImports {
 		SortImports(&node)
@@ -183,12 +195,15 @@ func Format(filename string, input string, options Options) (string, error) {
 		visitor := FixIndentation{Options: options}
 		visitor.VisitFile(node, finalFodder)
 	}
+	removeExtraTrailingNewlines(finalFodder)
 
-	u := &Unparser{options: options}
-	u.Unparse(node, false)
-	u.Fill(finalFodder, true, false)
-	// Final whitespace is stripped at lexing time.  Add a single new line
-	// as files ought to end with a new line.
-	u.Write("\n")
-	return u.String(), nil
+	u := &unparser{options: options}
+	u.unparse(node, false)
+	u.fillFinal(finalFodder, true, false)
+	if len(finalFodder) == 0 || finalFodder[len(finalFodder)-1].Kind == ast.FodderInterstitial {
+		// Final whitespace is stripped at lexing time.  If we didn't just output a new line in fillFinal,
+		// then add a single new line to ensure Jsonnet files end with a new line.
+		u.write("\n")
+	}
+	return u.string(), nil
 }

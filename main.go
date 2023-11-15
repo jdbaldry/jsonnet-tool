@@ -17,7 +17,9 @@ import (
 
 	"github.com/google/go-jsonnet"
 	"github.com/google/go-jsonnet/ast"
-	"github.com/google/go-jsonnet/toolutils"
+	"github.com/google/go-jsonnet/formatter"
+
+	"github.com/grafana/tanka/pkg/jsonnet/native"
 )
 
 var (
@@ -94,6 +96,10 @@ func makeVM() *jsonnet.VM {
 	importer := &jsonnet.FileImporter{JPaths: filepath.SplitList(os.Getenv("JSONNET_PATH"))}
 	vm.Importer(importer)
 
+	for _, fn := range native.Funcs() {
+		vm.NativeFunction(fn)
+	}
+
 	// Add in a `manifestYamlFromJson` native function which is used by a number of Jsonnet libraries.
 	// I don't care for YAML so it actually outputs JSON.
 	manifestYaml := &jsonnet.NativeFunction{
@@ -108,6 +114,7 @@ func makeVM() *jsonnet.VM {
 		Name:   "manifestYamlFromJson",
 	}
 	vm.NativeFunction(manifestYaml)
+
 	return vm
 }
 
@@ -171,7 +178,7 @@ func (r *repl) eval(input string) (string, error) {
 			re := regexp.MustCompile(`^(?s)\\f\s+(.+)$`)
 			matches := re.FindStringSubmatch(input)
 			if len(matches) != 2 {
-				return "", fmt.Errorf("invalid file command syntax. Wanted \\f file")
+				return "", fmt.Errorf("invalid file command syntax. Wanted \\f FILE")
 			}
 			path, err := filepath.Abs(matches[1])
 			if err != nil {
@@ -250,7 +257,7 @@ func (r *repl) eval(input string) (string, error) {
 		}
 		builder.WriteString(input)
 		if r.namespaceFile[r.ns] != "" {
-			err := ioutil.WriteFile(r.namespaceFile[r.ns], []byte(builder.String()), 0644)
+			err := ioutil.WriteFile(r.namespaceFile[r.ns], []byte(builder.String()), 0o644)
 			if err != nil {
 				return "", fmt.Errorf("unable to write namespace to file %s: %w", r.namespaceFile, err)
 			}
@@ -260,7 +267,7 @@ func (r *repl) eval(input string) (string, error) {
 			return "", err
 		}
 		if r.evalFile[r.ns] != "" {
-			err := ioutil.WriteFile(r.evalFile[r.ns], []byte(result), 0644)
+			err := ioutil.WriteFile(r.evalFile[r.ns], []byte(result), 0o644)
 			if err != nil {
 				return "", fmt.Errorf("unable to write evaluation to file %s: %w", r.evalFile, err)
 			}
@@ -345,7 +352,7 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to read file %s: %v\n", file, err)
 		}
-		root, _, err := toolutils.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(body))
+		root, _, err := formatter.SnippetToRawAST(file, string(body))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Unable to produce AST for file %s: %v\n", file, err)
 			os.Exit(1)
@@ -384,17 +391,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		root, finalFodder, err := toolutils.SnippetToRawAST(ast.DiagnosticFileName(file), file, string(input))
+		_, _, err = formatter.SnippetToRawAST(file, string(input))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing AST for file %s: %v\n", file, err)
 			os.Exit(1)
 		}
-		output, err := makeVM().Expand(root, finalFodder)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error expanding file %s: %v\n", file, err)
-			os.Exit(1)
-		}
-		fmt.Print(output)
+		// output, err := makeVM().Expand(root, finalFodder)
+		// if err != nil {
+		// 	fmt.Fprintf(os.Stderr, "Error expanding file %s: %v\n", file, err)
+		// 	os.Exit(1)
+		// }
+		// fmt.Print(output)
 
 	case "imports":
 		if len(args) != 1 {

@@ -36,7 +36,7 @@ import (
 
 // VM is the core interpreter and is the touchpoint used to parse and execute
 // Jsonnet.
-type VM struct {
+type VM struct { //nolint:govet
 	MaxStack       int
 	ext            vmExtMap
 	tla            vmExtMap
@@ -59,12 +59,12 @@ const (
 
 // External variable or top level argument provided before execution
 type vmExt struct {
-	// the kind of external variable that is specified.
-	kind extKind
-	// jsonnet code to evaluate (kind=extKindCode) or string to pass (kind=extKindVar)
-	value string
 	// the specified node for kind=extKindNode
 	node ast.Node
+	// jsonnet code to evaluate (kind=extKindCode) or string to pass (kind=extKindVar)
+	value string
+	// the kind of external variable that is specified.
+	kind extKind
 }
 
 type vmExtMap map[string]vmExt
@@ -171,7 +171,7 @@ const (
 )
 
 // version is the current gojsonnet's version
-const version = "v0.17.0"
+const version = "v0.20.0"
 
 // Evaluate evaluates a Jsonnet program given by an Abstract Syntax Tree
 // and returns serialized JSON as string.
@@ -206,22 +206,6 @@ func (vm *VM) EvaluateMulti(node ast.Node) (output map[string]string, err error)
 		}
 	}()
 	return evaluateMulti(node, vm.ext, vm.tla, vm.nativeFuncs, vm.MaxStack, vm.importCache, vm.traceOut, vm.StringOutput)
-}
-
-// Expand expands usage of variables to their bound expressions.
-func (vm *VM) Expand(node ast.Node, finalFodder ast.Fodder) (output string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("(CRASH) %v\n%s", r, debug.Stack())
-		}
-	}()
-
-	i, err := buildInterpreter(vm.ext, vm.nativeFuncs, vm.MaxStack, vm.importCache, vm.traceOut)
-	if err != nil {
-		return "", err
-	}
-
-	return expand(i, node, finalFodder)
 }
 
 func (vm *VM) evaluateSnippet(diagnosticFileName ast.DiagnosticFileName, filename string, snippet string, kind evalKind) (output interface{}, err error) {
@@ -294,6 +278,21 @@ func (vm *VM) findDependencies(filePath string, node *ast.Node, dependencies map
 			return err
 		}
 	case *ast.ImportStr:
+		foundAt, err := vm.ResolveImport(filePath, i.File.Value)
+		if err != nil {
+			*stackTrace = append([]traceFrame{{Loc: *i.Loc()}}, *stackTrace...)
+			return err
+		}
+		cleanedAbsPath = foundAt
+		if _, isFileImporter := vm.importer.(*FileImporter); isFileImporter {
+			cleanedAbsPath, err = getAbsPath(foundAt)
+			if err != nil {
+				*stackTrace = append([]traceFrame{{Loc: *i.Loc()}}, *stackTrace...)
+				return err
+			}
+		}
+		dependencies[cleanedAbsPath] = struct{}{}
+	case *ast.ImportBin:
 		foundAt, err := vm.ResolveImport(filePath, i.File.Value)
 		if err != nil {
 			*stackTrace = append([]traceFrame{{Loc: *i.Loc()}}, *stackTrace...)
@@ -451,7 +450,7 @@ func (vm *VM) EvaluateFileMulti(filename string) (files map[string]string, forma
 	return output, nil
 }
 
-// FindDependencies returns a sorted array of unique transitive dependencies (via import or importstr)
+// FindDependencies returns a sorted array of unique transitive dependencies (via import/importstr/importbin)
 // from all the given `importedPaths` which are themselves excluded from the returned array.
 // The `importedPaths` are parsed as if they were imported from a Jsonnet file located at `importedFrom`.
 func (vm *VM) FindDependencies(importedFrom string, importedPaths []string) ([]string, error) {

@@ -17,6 +17,8 @@ limitations under the License.
 package jsonnet
 
 import (
+	"fmt"
+
 	"github.com/google/go-jsonnet/ast"
 )
 
@@ -109,7 +111,7 @@ type bindingsUnboundField struct {
 }
 
 func (f *bindingsUnboundField) evaluate(i *interpreter, sb selfBinding, origBindings bindingFrame, fieldName string) (value, error) {
-	upValues := make(bindingFrame)
+	upValues := make(bindingFrame, len(origBindings)+len(f.bindings))
 	for variable, pvalue := range origBindings {
 		upValues[variable] = pvalue
 	}
@@ -191,7 +193,7 @@ func forceThunks(i *interpreter, args *bindingFrame) error {
 }
 
 func (closure *closure) evalCall(arguments callArguments, i *interpreter) (value, error) {
-	argThunks := make(bindingFrame)
+	argThunks := make(bindingFrame, len(arguments.named)+len(arguments.positional))
 	parameters := closure.parameters()
 	for i, arg := range arguments.positional {
 		argThunks[parameters[i].name] = arg
@@ -253,9 +255,9 @@ func makeClosure(env environment, function *ast.Function) *closure {
 
 // NativeFunction represents a function implemented in Go.
 type NativeFunction struct {
+	Name   string
 	Func   func([]interface{}) (interface{}, error)
 	Params ast.Identifiers
-	Name   string
 }
 
 // evalCall evaluates a call to a NativeFunction and returns the result.
@@ -273,7 +275,15 @@ func (native *NativeFunction) evalCall(arguments callArguments, i *interpreter) 
 		}
 		nativeArgs = append(nativeArgs, json)
 	}
-	resultJSON, err := native.Func(nativeArgs)
+	call := func() (resultJSON interface{}, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("native function %#v panicked: %v", native.Name, r)
+			}
+		}()
+		return native.Func(nativeArgs)
+	}
+	resultJSON, err := call()
 	if err != nil {
 		return nil, i.Error(err.Error())
 	}

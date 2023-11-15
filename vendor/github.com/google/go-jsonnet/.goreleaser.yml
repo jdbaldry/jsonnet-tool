@@ -15,7 +15,7 @@ builds:
       - arm64
     ignore:
       - goos: darwin
-      - goarch: 386
+        goarch: 386
 
     id: jsonnet
     main: ./cmd/jsonnet
@@ -36,11 +36,50 @@ builds:
       - arm64
     ignore:
       - goos: darwin
-      - goarch: 386
+        goarch: 386
 
     id: jsonnetfmt
     main: ./cmd/jsonnetfmt
     binary: jsonnetfmt
+
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: 386
+
+    id: jsonnet-lint
+    main: ./cmd/jsonnet-lint
+    binary: jsonnet-lint
+
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: 386
+
+    id: jsonnet-deps
+    main: ./cmd/jsonnet-deps
+    binary: jsonnet-deps
+
 
 archives:
   - replacements:
@@ -79,9 +118,42 @@ nfpms:
     formats:
       - deb
     bindir: /usr/bin
+    maintainer: David Cunningham <dcunnin@google.com>
     file_name_template: "jsonnetfmt-go_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     overrides:
       deb:
         conflicts:
           # See: https://packages.ubuntu.com/jsonnet
           - jsonnetfmt
+  - id: jsonnet-lint
+    package_name: jsonnet-lint-go
+    builds:
+      - jsonnet-lint
+    homepage: https://github.com/google/go-jsonnet
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /usr/bin
+    maintainer: David Cunningham <dcunnin@google.com>
+    file_name_template: "jsonnet-lint-go_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    overrides:
+      deb:
+        conflicts:
+          # See: https://packages.ubuntu.com/jsonnet
+          - jsonnet-lint
+  - id: jsonnet-deps
+    package_name:  jsonnet-deps-go
+    builds:
+      - jsonnet-deps
+    homepage: https://github.com/google/go-jsonnet
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /usr/bin
+    maintainer: David Cunningham <dcunnin@google.com>
+    file_name_template: " jsonnet-deps-go_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    overrides:
+      deb:
+        conflicts:
+          # See: https://packages.ubuntu.com/jsonnet
+          - jsonnet-deps

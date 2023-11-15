@@ -27,21 +27,19 @@ import (
 
 	"github.com/google/go-jsonnet/ast"
 	"github.com/google/go-jsonnet/astgen"
-	"github.com/google/go-jsonnet/internal/formatter"
 )
 
 // TODO(sbarzowski) use it as a pointer in most places b/c it can sometimes be shared
 // for example it can be shared between array elements and function arguments
 type environment struct {
-	selfBinding selfBinding
-
 	// Bindings introduced in this frame. The way previous bindings are treated
 	// depends on the type of a frame.
 	// If cleanEnv == true then previous bindings are ignored (it's a clean
 	// environment with just the variables we have here).
 	// If cleanEnv == false then if this frame doesn't contain a binding
 	// previous bindings will be used.
-	upValues bindingFrame
+	upValues    bindingFrame
+	selfBinding selfBinding
 }
 
 func makeEnvironment(upValues bindingFrame, sb selfBinding) environment {
@@ -65,20 +63,20 @@ func (i *interpreter) getCurrentStackTrace() []traceFrame {
 }
 
 type callFrame struct {
+	// Tracing information about the place where it was called from.
+	trace traceElement
+
+	env environment
+
 	// True if it switches to a clean environment (function call or array element)
 	// False otherwise, e.g. for local
 	cleanEnv bool
-
-	// Tracing information about the place where it was called from.
-	trace traceElement
 
 	// Whether this frame can be removed from the stack when it doesn't affect
 	// the evaluation result, but in case of an error, it won't appear on the
 	// stack trace.
 	// It's used for tail call optimization.
 	trimmable bool
-
-	env environment
 }
 
 func dumpCallFrame(c *callFrame) string {
@@ -96,10 +94,10 @@ func dumpCallFrame(c *callFrame) string {
 }
 
 type callStack struct {
+	currentTrace traceElement
+	stack        []*callFrame
 	calls        int
 	limit        int
-	stack        []*callFrame
-	currentTrace traceElement
 }
 
 func dumpCallStack(c *callStack) string {
@@ -227,7 +225,7 @@ func (s *callStack) getCurrentEnv(ast ast.Node) environment {
 
 // Build a binding frame containing specified variables.
 func (s *callStack) capture(freeVars ast.Identifiers) bindingFrame {
-	env := make(bindingFrame)
+	env := make(bindingFrame, len(freeVars))
 	for _, fv := range freeVars {
 		env[fv] = s.lookUpVarOrPanic(fv)
 	}
@@ -243,10 +241,8 @@ func makeCallStack(limit int) callStack {
 
 // Keeps current execution context and evaluates things
 type interpreter struct {
-	// Current stack. It is used for:
-	// 1) Keeping environment (object we're in, variables)
-	// 2) Diagnostic information in case of failure
-	stack callStack
+	// Output stream for trace() for
+	traceOut io.Writer
 
 	// External variables
 	extVars map[string]*cachedThunk
@@ -260,13 +256,15 @@ type interpreter struct {
 	// Keeps imports
 	importCache *importCache
 
-	// Output stream for trace() for
-	traceOut io.Writer
+	// Current stack. It is used for:
+	// 1) Keeping environment (object we're in, variables)
+	// 2) Diagnostic information in case of failure
+	stack callStack
 }
 
 // Map union, b takes precedence when keys collide.
 func addBindings(a, b bindingFrame) bindingFrame {
-	result := make(bindingFrame)
+	result := make(bindingFrame, len(a))
 
 	for k, v := range a {
 		result[k] = v
@@ -286,174 +284,6 @@ func (i *interpreter) newCall(env environment, trimmable bool) error {
 	}
 	s.newCall(env, trimmable)
 	return nil
-}
-
-func (i *interpreter) expand(a ast.Node, tc tailCallStatus) (ast.Node, error) {
-	trace := traceElement{
-		loc:     a.Loc(),
-		context: a.Context(),
-	}
-	oldTrace := i.stack.currentTrace
-	i.stack.clearCurrentTrace()
-	i.stack.setCurrentTrace(trace)
-	defer func() { i.stack.clearCurrentTrace(); i.stack.setCurrentTrace(oldTrace) }()
-
-	var err error
-	switch node := a.(type) {
-
-	case *ast.Apply:
-		var (
-			arguments = ast.Arguments{
-				Positional: make([]ast.CommaSeparatedExpr, len(node.Arguments.Positional)),
-				Named:      make([]ast.NamedArgument, len(node.Arguments.Named)),
-			}
-		)
-		for j, arg := range node.Arguments.Positional {
-			arg.Expr, err = i.expand(arg.Expr, tc)
-			arguments.Positional[j] = arg
-		}
-		for j, arg := range node.Arguments.Named {
-			arg.Arg, err = i.expand(arg.Arg, tc)
-			arguments.Named[j] = arg
-		}
-		node.Arguments = arguments
-		return node, err
-
-	case *ast.ApplyBrace:
-		return node, err
-
-	case *ast.Array:
-		return node, err
-
-	case *ast.Binary:
-		node.Left, err = i.expand(node.Left, tc)
-		if err != nil {
-			return node, err
-		}
-		node.Right, err = i.expand(node.Right, tc)
-		if err != nil {
-			return node, err
-		}
-		return node, err
-
-	case *ast.Conditional:
-		return node, err
-
-	case *ast.DesugaredObject:
-		return node, err
-
-	case *ast.Dollar:
-		return node, err
-
-	case *ast.Error:
-		return node, err
-
-	case *ast.Function:
-		return node, err
-
-	case *ast.Import:
-		return &ast.Parens{Inner: node}, err
-
-	case *ast.ImportStr:
-		return &ast.Parens{Inner: node}, err
-
-	case *ast.Index:
-		return node, err
-
-	case *ast.InSuper:
-		return node, err
-
-	case *ast.LiteralBoolean:
-		return node, err
-
-	case *ast.LiteralNull:
-		return node, err
-
-	case *ast.LiteralNumber:
-		return node, err
-
-	case *ast.LiteralString:
-		return node, err
-
-	case *ast.Local:
-		vars := make(bindingFrame)
-		bindEnv := i.stack.getCurrentEnv(a)
-		for _, bind := range node.Binds {
-			body, err := i.expand(bind.Body, tc)
-			if err != nil {
-				return node, err
-			}
-			th := cachedThunk{env: &bindEnv, body: body}
-
-			// recursive locals
-			vars[bind.Variable] = &th
-			bindEnv.upValues[bind.Variable] = &th
-			i.stack.newLocal(vars)
-		}
-
-		sz := len(i.stack.stack)
-		// Add new stack frame, with new thunk for this variable
-		// execute body WRT stack frame.
-		node.Body, err = i.expand(node.Body, tc)
-		i.stack.popIfExists(sz)
-		return node, err
-
-	case *ast.Object:
-		var (
-			fields  = make([]ast.ObjectField, len(node.Fields))
-			vars    = make(bindingFrame)
-			bindEnv = i.stack.getCurrentEnv(a)
-		)
-
-		for j, field := range node.Fields {
-			if field.Kind == ast.ObjectLocal {
-				field.Expr2, err = i.expand(field.Expr2, tc)
-				if err != nil {
-					return node, err
-				}
-				th := cachedThunk{env: &bindEnv, body: field.Expr2}
-				// recursive locals
-				vars[*field.Id] = &th
-				bindEnv.upValues[*field.Id] = &th
-				fields[j] = field
-			}
-		}
-		i.stack.newLocal(vars)
-		sz := len(i.stack.stack)
-		// Add new stack frame, with new thunk for this variable
-		// execute body WRT stack frame.
-		for j, field := range node.Fields {
-			if field.Kind != ast.ObjectLocal {
-				field.Expr2, err = i.expand(field.Expr2, tc)
-				if err != nil {
-					return node, err
-				}
-				fields[j] = field
-			}
-		}
-		node.Fields = fields
-		i.stack.popIfExists(sz)
-		return node, err
-
-	case *ast.Parens:
-		node.Inner, err = i.expand(node.Inner, tc)
-		return node, err
-
-	case *ast.Self:
-		return node, err
-
-	case *ast.SuperIndex:
-		return node, err
-
-	case *ast.Unary:
-		return node, err
-
-	case *ast.Var:
-		return i.stack.lookUpVarOrPanic(node.Id).body, err
-
-	default:
-		panic(fmt.Sprintf("Expanding this AST type not implemented: %v", reflect.TypeOf(a)))
-	}
 }
 
 func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
@@ -559,7 +389,7 @@ func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 
 	case *ast.DesugaredObject:
 		// Evaluate all the field names.  Check for null, dups, etc.
-		fields := make(simpleObjectFieldMap)
+		fields := make(simpleObjectFieldMap, len(node.Fields))
 		for _, field := range node.Fields {
 			fieldNameValue, err := i.evaluate(field.Name, nonTailCall)
 			if err != nil {
@@ -583,7 +413,7 @@ func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 			if field.PlusSuper {
 				f = &plusSuperUnboundField{f}
 			}
-			fields[fieldName] = simpleObjectField{field.Hide, f}
+			fields[fieldName] = simpleObjectField{f, field.Hide}
 		}
 		var asserts []unboundField
 		for _, assert := range node.Asserts {
@@ -657,6 +487,10 @@ func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 		codePath := node.Loc().FileName
 		return i.importCache.importString(codePath, node.File.Value, i)
 
+	case *ast.ImportBin:
+		codePath := node.Loc().FileName
+		return i.importCache.importBinary(codePath, node.File.Value, i)
+
 	case *ast.LiteralBoolean:
 		return makeValueBoolean(node.Value), nil
 
@@ -677,7 +511,7 @@ func (i *interpreter) evaluate(a ast.Node, tc tailCallStatus) (value, error) {
 		return makeValueString(node.Value), nil
 
 	case *ast.Local:
-		vars := make(bindingFrame)
+		vars := make(bindingFrame, len(node.Binds))
 		bindEnv := i.stack.getCurrentEnv(a)
 		for _, bind := range node.Binds {
 			th := cachedThunk{env: &bindEnv, body: bind.Body}
@@ -889,7 +723,7 @@ func (i *interpreter) manifestJSON(v value) (interface{}, error) {
 		}
 		i.stack.clearCurrentTrace()
 
-		result := make(map[string]interface{})
+		result := make(map[string]interface{}, len(fieldNames))
 
 		for _, fieldName := range fieldNames {
 			msg := ast.MakeLocationRangeMessage(fmt.Sprintf("Field %#v", fieldName))
@@ -1115,6 +949,8 @@ func jsonToValue(i *interpreter, v interface{}) (value, error) {
 
 	case bool:
 		return makeValueBoolean(v), nil
+	case int, int8, int16, int32, int64:
+		return makeDoubleCheck(i, v.(float64))
 	case float64:
 		return makeDoubleCheck(i, v)
 
@@ -1135,20 +971,6 @@ func jsonToValue(i *interpreter, v interface{}) (value, error) {
 	default:
 		return nil, i.Error(fmt.Sprintf("Not a json type: %#+v", v))
 	}
-}
-
-func (i *interpreter) expandInCleanEnv(env *environment, ast ast.Node, trimmable bool) (ast.Node, error) {
-	err := i.newCall(*env, trimmable)
-	if err != nil {
-		return nil, err
-	}
-	stackSize := len(i.stack.stack)
-
-	expanded, err := i.expand(ast, tailCall)
-
-	i.stack.popIfExists(stackSize)
-
-	return expanded, err
 }
 
 func (i *interpreter) EvalInCleanEnv(env *environment, ast ast.Node, trimmable bool) (value, error) {
@@ -1360,7 +1182,7 @@ func buildStdObject(i *interpreter) (*valueObject, error) {
 	}
 
 	for name, value := range builtinFields {
-		obj.fields[name] = simpleObjectField{ast.ObjectFieldHidden, value}
+		obj.fields[name] = simpleObjectField{value, ast.ObjectFieldHidden}
 	}
 	return objVal.(*valueObject), nil
 }
@@ -1410,7 +1232,7 @@ func prepareExtVars(i *interpreter, ext vmExtMap, kind string) map[string]*cache
 func buildObject(hide ast.ObjectFieldHide, fields map[string]value) *valueObject {
 	fieldMap := simpleObjectFieldMap{}
 	for name, v := range fields {
-		fieldMap[name] = simpleObjectField{hide, &readyValue{v}}
+		fieldMap[name] = simpleObjectField{&readyValue{v}, hide}
 	}
 	return makeValueSimpleObject(bindingFrame{}, fieldMap, nil, nil)
 }
@@ -1558,22 +1380,4 @@ func evaluateStream(node ast.Node, ext vmExtMap, tla vmExtMap, nativeFuncs map[s
 	manifested, err := i.manifestAndSerializeYAMLStream(result)
 	i.stack.clearCurrentTrace()
 	return manifested, err
-}
-
-func expand(i *interpreter, node ast.Node, finalFodder ast.Fodder) (string, error) {
-	loc := ast.MakeLocationRangeMessage("During expansion")
-	env := makeInitialEnv(node.Loc().FileName, i.baseStd)
-
-	i.stack.setCurrentTrace(traceElement{loc: &loc})
-	node, err := i.expandInCleanEnv(&env, node, false)
-	i.stack.clearCurrentTrace()
-	if err != nil {
-		return "", fmt.Errorf("error during expansion: %w", err)
-	}
-	u := &formatter.Unparser{}
-	u.Unparse(node, false)
-	u.Fill(finalFodder, true, false)
-	u.Write("\n")
-
-	return u.String(), nil
 }

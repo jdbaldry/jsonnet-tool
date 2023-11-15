@@ -1,16 +1,91 @@
-# github.com/google/go-jsonnet v0.17.0 => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211004073746-e6432fd78d04
+# github.com/Masterminds/goutils v1.1.1
 ## explicit
+github.com/Masterminds/goutils
+# github.com/Masterminds/semver/v3 v3.2.0
+## explicit; go 1.18
+github.com/Masterminds/semver/v3
+# github.com/Masterminds/sprig/v3 v3.2.3
+## explicit; go 1.13
+github.com/Masterminds/sprig/v3
+# github.com/fatih/color v1.15.0
+## explicit; go 1.17
+github.com/fatih/color
+# github.com/google/go-jsonnet v0.20.1-0.20230626194039-fed90cd9cd73
+## explicit; go 1.20
 github.com/google/go-jsonnet
 github.com/google/go-jsonnet/ast
 github.com/google/go-jsonnet/astgen
+github.com/google/go-jsonnet/formatter
 github.com/google/go-jsonnet/internal/errors
 github.com/google/go-jsonnet/internal/formatter
 github.com/google/go-jsonnet/internal/parser
 github.com/google/go-jsonnet/internal/pass
 github.com/google/go-jsonnet/internal/program
 github.com/google/go-jsonnet/toolutils
-# gopkg.in/yaml.v2 v2.2.7
+# github.com/google/uuid v1.3.0
+## explicit
+github.com/google/uuid
+# github.com/grafana/tanka v0.26.0
+## explicit; go 1.20
+github.com/grafana/tanka/pkg/helm
+github.com/grafana/tanka/pkg/jsonnet/native
+github.com/grafana/tanka/pkg/kubernetes/manifest
+github.com/grafana/tanka/pkg/kustomize
+# github.com/huandu/xstrings v1.3.3
+## explicit; go 1.12
+github.com/huandu/xstrings
+# github.com/imdario/mergo v0.3.12
+## explicit; go 1.13
+github.com/imdario/mergo
+# github.com/mattn/go-colorable v0.1.13
+## explicit; go 1.15
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.17
+## explicit; go 1.15
+github.com/mattn/go-isatty
+# github.com/mitchellh/copystructure v1.2.0
+## explicit; go 1.15
+github.com/mitchellh/copystructure
+# github.com/mitchellh/reflectwalk v1.0.2
+## explicit
+github.com/mitchellh/reflectwalk
+# github.com/pkg/errors v0.9.1
+## explicit
+github.com/pkg/errors
+# github.com/rs/zerolog v1.30.0
+## explicit; go 1.15
+github.com/rs/zerolog
+github.com/rs/zerolog/internal/cbor
+github.com/rs/zerolog/internal/json
+github.com/rs/zerolog/log
+# github.com/shopspring/decimal v1.3.1
+## explicit; go 1.13
+github.com/shopspring/decimal
+# github.com/spf13/cast v1.4.1
+## explicit
+github.com/spf13/cast
+# github.com/stretchr/objx v0.5.0
+## explicit; go 1.12
+github.com/stretchr/objx
+# golang.org/x/crypto v0.9.0
+## explicit; go 1.17
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blowfish
+golang.org/x/crypto/pbkdf2
+golang.org/x/crypto/scrypt
+golang.org/x/crypto/sha3
+# golang.org/x/sys v0.10.0
+## explicit; go 1.17
+golang.org/x/sys/cpu
+golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# gopkg.in/yaml.v2 v2.4.0
+## explicit; go 1.15
 gopkg.in/yaml.v2
-# sigs.k8s.io/yaml v1.1.0
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3
+# sigs.k8s.io/yaml v1.3.0
+## explicit; go 1.12
 sigs.k8s.io/yaml
-# github.com/google/go-jsonnet => github.com/jdbaldry/go-jsonnet v0.16.1-0.20211004073746-e6432fd78d04
